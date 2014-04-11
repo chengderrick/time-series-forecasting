@@ -1,0 +1,32 @@
+1
+Store,Dept,Date,Weekly_Sales,IsHoliday
+1,1,2010-04-02,57258.43,FALSE
+1,1,2010-04-09,42960.91,FALSE  
+1,1,2010-04-16,17596.96,FALSE	<==
+1,1,2010-04-23,16145.35,FALSE  ----W
+1,1,2010-04-30,16555.11,FALSE  
+1,1,2010-05-07,17413.94,FALSE  --move
+1,1,2010-05-14,18926.74,FALSE  head
+
+1,2,2010-06-11,16637.62,FALSE
+
+
+
+
+
+# Generate training data from train
+        # while abs(head)+windowSize <= trainDoc.recordNumber:
+        #     move = head -1
+        #     trainInstance = []
+        #     for i in range (0, windowSize):
+        #         trainInstance.append(trainDoc.weeklySales[move][1])
+        #         move-=1
+        #     targetList.append(trainDoc.weeklySales[head][1])
+        #     trainList.append(trainInstance[::-1])
+        #     head -=1
+
+
+
+         deptSalesDoc.storeId = storeId
+                deptSalesDoc.deptId = deptId
+                self.docs.append(deptSalesDoc)
