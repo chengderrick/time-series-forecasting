@@ -1,0 +1,155 @@
+Avg Tempture improved scored by 230. 03501 position by 8
+                      
+avgTemprature 4114.76384
+avgTemprature + avgCPI 4585.63364
+avgTemprature + avgFuelPrice 4276.63468
+avgTemprature + avgFuelPrice using LARS Lasso  4563.53311
+
+There are 78 missing records between test and train
+
+
+
+Issues:
+Ensemble learning result did not outperm single MLR
+Adding new features did not improve, introducing nodisy instead
+There are too many features if we take all
+Ideas: moving average + seasonality index
+
+ 
+# Week Three Issues
+Hold out train data
+result from cross validation, different window sizes
+understand evaluation metrics
+A really important issue is when test records is many more than train records, cannot apply DTW propper
+
+Validation Results:
+Multiple linear regression:
+train window size : 20% training
+    # WMAE 2056 for 5% sampling 
+    # WMAE 2192 for 10% sampling
+    # WMAE 2560 for 20% sampling
+    # WMAE 2655 for 25% sampling
+    Kaggle : # WMAE 4344.79886  <== Best in Kaggle
+
+train window size : 10% training
+    # WMAE 1899 for 5% sampling
+    # WMAE 1944 for 10% sampling
+    # WMAE 2346 for 20% sampling
+    # WMAE 2449 for 25% sampling   <== Best in CV
+    Kaggle : # WMAE 4465.69095
+
+train window size : 6.66% training
+    # WMAE 2004 for 5% sampling
+    # WMAE 2007 for 10% sampling
+    # WMAE 2393 for 20% sampling
+    # WMAE 2453 for 25% sampling
+    Kaggle : # WMAE 4520.02388
+
+train window size : 5% training
+    # WMAE 2051 for 5% sampling
+    # WMAE 2065 for 10% sampling
+    # WMAE 2408 for 20% sampling
+    # WMAE 2489 for 25% sampling
+
+DTW:
+train window size : 25% trainingLength - forecast
+    # WMAE 2468 for 25% sampling
+
+train window size : 20% trainingLength - forecast  <== Best in CV
+    # WMAE 2460 for 25% sampling
+    Kaggle  # WMAE 5253.52741
+
+
+train window size : 16.6% trainingLength - forecast
+    # WMAE 2573 for 25% sampling
+
+train window size : 12.5% trainingLength - forecast
+    # WMAE 2746 for 25% sampling
+    Kaggle  # WMAE 5255.95739
+
+train window size : 10% trainingLength - forecast
+    # WMAE 2795 for 25% sampling
+    Kaggle  # WMAE 5240.86445     <== Best in Kaggle
+
+train window size : 6.66% trainingLength - forecast
+    # WMAE 2986 for 25% sampling 
+
+
+Featured linear regression:
+train window size : 20% training <= Kaggle 5081.83985
+
+Essamble:
+MLR + DTW <= Kaggle 4454.09373
+
+
+
+To-Do:
+When dept is not in train, find the dept from anther store
+
+To Print:
+ parts of feature.csv, store.csv to show James
+ every dept's records number
+ The evaluation metrics from Word?
+
+
+
+
+# Materials:
+Cross-validation : http://robjhyndman.com/hyndsight/crossvalidation/
+DTW example: http://www.r-bloggers.com/time-series-matching-with-dynamic-time-warping/
+
+
+# For thesis:
+Methods:
+Dynamic Time Warping: Like edit distance
+Restrictions on Warping Paths:
+Continuity: No elements may be skipped in a sequence (we may need some points to be skipped )
+
+
+
+Multiple Linear Regression
+
+Exponential Smoothing:
+Pros: use all the data points and have different weight for each data point
+F(t+1) = αD(t) + (1-α)F(t)
+samller α will make more data point contribute to the forecast
+or say if we wanna all data points to contribute reasonably, α has to be reasonably small
+
+# Week Two
+After examaming the data and tried the methods, found training data is not equally distributed
+Some depts have just very limited training data: 1, 77 has three records only, 1,78 has  4 records
+some need more test than given training record
+even more, some store dept sales records don't appear in train ! such as 5, 99 9,99
+problem is how to specify window size, train record are very limited in some case
+
+
+# Week One
+Technologies used?
+This is a time series analysis and multi-step ahead prediction problem in machine learning
+
+Methods: 
+using weka's dedicated time series analysis environment which allows forecasting models to be developed, evaluated and visualized.
+
+
+this differs from typical data mining/machine learning applications where each data point is an independent example of the concept to be learned, and the ordering of data points within a data set does not matter.
+
+Weka (>= 3.7.3) 
+
+Regression algorithms are most likely useful, or methods capable of predicting continuous target can be applied 
+dependency between the past and the future
+Purely random processes
+Random walk
+
+a problem of supervised learning problem, where we have to infer from historical data the possibly nonlinear dependance between the input (past embedding vector) and the output (future value).
+one-step-ahead prediction
+
+
+
+################################
+We don't have a fixed length for each dept sales data, for hold out:
+    it is common practice to reserve a part from the end of each time series for testing, and to use the rest of the series for training
+In traditional forecasting of economic data, the analyzed series mainly represent yearly, quarterly, or monthly acquired data, so that series hardly reach a length longer than a couple of hundreds of values.
+
+For evaluation, usually a part at the end of each series is reserved and not used during model generation. This is often called out-of-sample evaluation [47]. To avoid confusion with other evaluation techniques, we will call validation using a set taken from the end of the series last block validation.
+
+ Methods widely used are linear methods (made popular by Box and Jenkins [8]) such as autoregression (AR), moving average (MA), or combinations of these (ARMA) Based on these methods, various approaches exist to tackle non-stationarity in the series. A possibility is to use the derivative of the series as input (ARIMA). Or seasonal decomposition procedures, e.g., the STL procedure [16], are used to decompose the series into (deterministic) trend and seasonality, and a stochastic process of the residuals that is stationary.
