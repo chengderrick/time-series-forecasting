@@ -196,8 +196,6 @@ class DeptDoc:
         
         return trainDeptDoc
 
-
-
     # ----Featured-----  This block is for Featured Multipe Linear Regression ---------
     def fetchFeatures(self, salesWithDate, salesColumn, tail, head, featureColl):
         salesFeature = salesColumn[tail : head]
@@ -292,8 +290,8 @@ class DeptDoc:
 
     # ---------  This block is for Multipe Linear Regression  ---------
     def trainClassifier(self, trainData, targetData):
-        # classifier = linear_model.LinearRegression()
-        classifier = linear_model.LassoLars(alpha=.1)
+        classifier = linear_model.LinearRegression()
+        # classifier = linear_model.LassoLars(alpha=.1)
         # classifier = svm.SVR()
         # classifier = tree.DecisionTreeRegressor()
         # classifier = GaussianNB()
@@ -356,7 +354,7 @@ class DeptDoc:
             targetList = numpy.append(targetList, target)
             classifier = self.trainClassifier(trainList, targetList)
 
-        # print 'store', self.storeId, 'dept', self.deptId
+        print 'store', self.storeId, 'dept', self.deptId
         #pprint(forecastResults)
         return forecastResults
 
@@ -428,14 +426,17 @@ class Validation:
         self.trainLines = []
         self.holdout()   # populate above lists
 
+        # print "self.trainLines-------------"
+        # pprint(self.trainLines)
+        # print "self.holdoutLinesholdoutLines-------------"
+        # pprint(self.holdoutLines)
+
     def holdout(self):
         for deptDoc in self.trainColl.allDeptdocs:
             holdoutPoint = self.getHoldoutPoint(deptDoc.recordNumber)
-            print 'deptDoc id:', deptDoc.deptId
-            print 'holdoutPoint:', holdoutPoint
             self.trainLines += deptDoc.deptSalesLines[ : deptDoc.recordNumber - holdoutPoint]
             self.holdoutLines += deptDoc.deptSalesLines[-holdoutPoint : ]
-
+            
     def getHoldoutPoint(self, recordNumber):
         if recordNumber/4 > 0:
             return recordNumber/4
@@ -450,13 +451,20 @@ class Validation:
         trainDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.trainLines)
         holdoutDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.holdoutLines)
 
-        print "trainDataColl givenLines", trainDataColl.givenLines
-        print "trainDataColl givenLines", trainDataColl.givenLines
+        # print "trainDataColl givenLines:"
+        # pprint(trainDataColl.givenLines)
+        # print "holdoutDataColl givenLines:"
+        # pprint(holdoutDataColl.givenLines)
 
         forecastResults = []
         for testDeptDoc in holdoutDataColl.allDeptdocs:
-            # forecastResults += testDeptDoc.forecastRegression(trainDataColl)
-            forecastResults += testDeptDoc.forecastDTW(trainDataColl)
+            # print "test deptSalesLines:"
+            # pprint(testDeptDoc.deptSalesLines)
+
+            forecastResults += testDeptDoc.forecastRegression(trainDataColl)
+            # forecastResults += testDeptDoc.forecastDTW(trainDataColl)
+        print "forecastResults:"
+        pprint(forecastResults)
 
         WMAE = self.evaluation(forecastResults, holdoutDataColl) # Evaluation the results against our metric
         print 'Final WMAE is', WMAE
@@ -469,7 +477,6 @@ class Validation:
         if len(forecast) != realColl.recordNumber:
             print "Something wrong, the forecast is not complete"
             return
-        
         WMAESum = 0
         weightSum = 0
         i = 0
@@ -479,14 +486,13 @@ class Validation:
                 for splitInfo in deptDoc.deptSalesInfo:
                     weightedAbsError = 0
                     actualValue = float(splitInfo[3])
-                    isHoliday = True if splitInfo[4] == 'TRUE' else False
-                    weightedAbsError = 5(abs(actualValue - forecast[i])) if isHoliday else abs(actualValue - forecast[i])
+                    isHoliday = True if splitInfo[4].strip() == 'TRUE' else False
+                    weightedAbsError = 5 * (abs(actualValue - forecast[i])) if isHoliday else abs(actualValue - forecast[i])
                     WMAESum += weightedAbsError
                     weightSum +=  5 if isHoliday else 1
                     i += 1
-        print len(forecast), 'len(forecast)'
-        print realColl.recordNumber, 'realColl.recordNumber'
-
+        
+        print 'test data size', len(forecast)
         return float(WMAESum)/weightSum
 
 class helper:
