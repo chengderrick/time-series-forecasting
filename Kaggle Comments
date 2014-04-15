@@ -1,0 +1,21 @@
+What are Markdowns?
+
+Simplistically mark downs are product discounts to promote or sell a product either to increase profit or cut losses. Let me give you an example, lets say a grocery store in selling perishable products such as meat/vegetables/dairy etc., They all have to be sold before the expiration date. If the products have not been sold before the expiration date, then the grocery store "would "mark down" the prices of these products in the hope of selling it quickly. In this instance it is a "clearance" mark down and the grocery store does this to cut losses. There are other instances where grocery store might discount the prices to attract customers during special holidays such as Christmas and New Year.
+
+Googling mark down and walmart would provide you additional insights
+
+hope this is helpful
+
+
+
+Difference between Cross Validation and Leader Borad
+
+Thanks for this post, I was just about to start a topic on this subject. 
+
+In my opinion, I think there is a good possibility that there might be significant difference between the leader board public score data which is on the 30% and the other 70% which is private. 
+
+Since the score is weighted on Holidays, if the other 70% test had more holiday events, then there is high likelihood that your score is not reflected in the public leader board score.
+
+There is a simple approach to do cross validation for this type of data, even if I mention a hint of it, I'm afraid this post is going to be flagged as I see flagging being used indiscriminately in this competition.
+
+I would like to know if discussing cross validation is permissible  if yes, I would love to share the approach that I would recommend.

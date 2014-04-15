@@ -1,3 +1,9 @@
+The final thesis should focus on the Kaggle competition or survey of time series literutres?
+Should I provide a comprehensive experiments on the results on the competition (have't tried all the algorithms)?
+The shape of a MLR is a curve, then why we call it linear method?
+Papers don't describe algorithms into depth
+One important issue is to make clear how to balance content in final thesis between Kaggle and general research 
+
 Avg Tempture improved scored by 230. 03501 position by 8
                       
 avgTemprature 4114.76384
@@ -106,7 +112,7 @@ Restrictions on Warping Paths:
 Continuity: No elements may be skipped in a sequence (we may need some points to be skipped )
 
 
-
+forecastDTW
 Multiple Linear Regression
 
 Exponential Smoothing:
@@ -118,7 +124,7 @@ or say if we wanna all data points to contribute reasonably, α has to be reason
 # Week Two
 After examaming the data and tried the methods, found training data is not equally distributed
 Some depts have just very limited training data: 1, 77 has three records only, 1,78 has  4 records
-some need more test than given training record
+some need more test than given training recordforecastDTW
 even more, some store dept sales records don't appear in train ! such as 5, 99 9,99
 problem is how to specify window size, train record are very limited in some case
 
