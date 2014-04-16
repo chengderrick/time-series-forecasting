@@ -1,8 +1,13 @@
-The final thesis should focus on the Kaggle competition or survey of time series literutres?
-Should I provide a comprehensive experiments on the results on the competition (have't tried all the algorithms)?
-The shape of a MLR is a curve, then why we call it linear method?
-Papers don't describe algorithms into depth
-One important issue is to make clear how to balance content in final thesis between Kaggle and general research 
+1. The focus of final thesis should be on general time series forecasting discussion?
+2. Some paper roll out around the experiment they have done, focus on one problem and show results from various models
+but may my paper be a survey on the time series forecasting domain?
+3. Should I provide a comprehensive experiments on the results on the competition (have't implemented all the algorithms)?
+
+Algorithm questions:
+1. The shape of a MLR is a curve, then why we call it linear method?
+2. Papers don't describe algorithms into depth
+3. The distribution of holiday inbalance CV results. 
+
 
 Avg Tempture improved scored by 230. 03501 position by 8
                       
