@@ -9,6 +9,7 @@ import mlpy
 import feature
 import pylab
 import matplotlib.pyplot as plt
+import cPickle
 
 # Class for collection of dept sales docs, 
 # each store has many depts and each dept has a doc containing its weekly sales records
@@ -212,21 +213,21 @@ class DeptDoc:
                 temperatureFeature.append(float(featureOfDate['Temperature']))
             # if featureOfDate['Fuel_Price'] != 'NA':
             #     fuelPriceFeature.append(float(featureOfDate['Fuel_Price']))
-            if featureOfDate['CPI'] != 'NA':
-                CPIFeature.append(float(featureOfDate['CPI']))
+            # if featureOfDate['CPI'] != 'NA':
+            #     CPIFeature.append(float(featureOfDate['CPI']))
             # if featureOfDate['Unemployment'] != 'NA':
             #     unemploymentFeature.append(float(featureOfDate['Unemployment']))
 
-        avgTemperatur = sum(temperatureFeature) / (len(temperatureFeature) if len(temperatureFeature) > 0 else 1)
+        avgTemperature = sum(temperatureFeature) / (len(temperatureFeature) if len(temperatureFeature) > 0 else 1)
         # avgFuelPrice = sum(fuelPriceFeature) / (len(fuelPriceFeature) if len(fuelPriceFeature) > 0 else 1)
-        avgCPI = sum(CPIFeature) / (len(CPIFeature) if len(CPIFeature) > 0 else 1)
+        # avgCPI = sum(CPIFeature) / (len(CPIFeature) if len(CPIFeature) > 0 else 1)
         # avgUnemployment = sum(unemploymentFeature) / (len(unemploymentFeature) if len(unemploymentFeature) > 0 else 1)
 
         trainFeatureInstance = salesFeature.tolist()
 
-        trainFeatureInstance.append(avgTemperatur)
+        trainFeatureInstance.append(avgTemperature)
         # trainFeatureInstance.append(avgFuelPrice)
-        trainFeatureInstance.append(avgCPI)
+        # trainFeatureInstance.append(avgCPI)
         # trainFeatureInstance.append(avgUnemployment)
 
 
@@ -359,12 +360,12 @@ class DeptDoc:
         return forecastResults
 
     # ---------  This block is for Dynamic Time Warping  ---------
-    def decideDtwWindowSize(self, trainLength, forecastSteps):
+    def decideDTWWindowSize(self, trainLength, forecastSteps):
         # Note: train dept can be NONE here, need to fix the fetch part first
         space = trainLength - forecastSteps
         
-        if space/5 > 0:  # Normal situation
-            return space/5
+        if space/4 > 0:  # Normal situation
+            return space/4
         else:  # There are more test than train or train data is not sufficient, fall back to linear regression
             return -1
 
@@ -380,7 +381,7 @@ class DeptDoc:
         
         forecastSteps = self.recordNumber
         #trainLength = trainDeptDoc.recordNumber  #TODO: Temp, should be uncommented when related dept found
-        windowSize = self.decideDtwWindowSize(trainLength, forecastSteps)
+        windowSize = self.decideDTWWindowSize(trainLength, forecastSteps)
         
         # When windowSize is -1, use linear regression instead
         if windowSize == -1:
@@ -417,14 +418,20 @@ class DeptDoc:
             salesColumn.append(esForecast)
         return forecastResults
 
+
 class Validation:
     def __init__(self, trainFile):
         self.trainFile = trainFile
         self.trainColl = WalmartSalesColl(trainFile, 'train', False, [])
 
-        self.holdoutLines = []
         self.trainLines = []
+        self.holdoutLines = []
         self.holdout()   # populate above lists
+
+        self.trainDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.trainLines)
+        self.holdoutDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.holdoutLines)
+
+        self.forecastResultsDict = {}
 
         # print "self.trainLines-------------"
         # pprint(self.trainLines)
@@ -448,27 +455,33 @@ class Validation:
             return recordNumber
 
     def validate(self):
-        trainDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.trainLines)
-        holdoutDataColl = WalmartSalesColl(self.trainFile, 'train', True, self.holdoutLines)
-
         # print "trainDataColl givenLines:"
         # pprint(trainDataColl.givenLines)
         # print "holdoutDataColl givenLines:"
         # pprint(holdoutDataColl.givenLines)
 
         forecastResults = []
-        for testDeptDoc in holdoutDataColl.allDeptdocs:
+        featureColl = feature.FeaturesColl('features.csv')
+
+        for testDeptDoc in self.holdoutDataColl.allDeptdocs:
             # print "test deptSalesLines:"
             # pprint(testDeptDoc.deptSalesLines)
+            if testDeptDoc.storeId == 1 and testDeptDoc.deptId == 1:
+                deptForecast = []
+                # deptForecast = testDeptDoc.forecastRegression(self.trainDataColl)
+                deptForecast = testDeptDoc.forecastFeaturedRegression(self.trainDataColl, featureColl)
+                # deptForecast = testDeptDoc.forecastDTW(self.trainDataColl)
+                forecastResults += deptForecast
+                self.forecastResultsDict[str(testDeptDoc.storeId) + '_' + str(testDeptDoc.deptId)] = deptForecast
 
-            forecastResults += testDeptDoc.forecastRegression(trainDataColl)
             # forecastResults += testDeptDoc.forecastDTW(trainDataColl)
-        print "forecastResults:"
-        pprint(forecastResults)
+        # print "forecastResults:"
+        # pprint(forecastResults)
 
-        WMAE = self.evaluation(forecastResults, holdoutDataColl) # Evaluation the results against our metric
-        print 'Final WMAE is', WMAE
-        return WMAE
+        # to unccomnet
+        # WMAE = self.evaluation(forecastResults, self.holdoutDataColl) # Evaluation the results against our metric
+        # print 'Final WMAE is', WMAE
+        # return WMAE
 
     # Method evaluation
     # forecast: [] 
@@ -495,7 +508,7 @@ class Validation:
         print 'test data size', len(forecast)
         return float(WMAESum)/weightSum
 
-class helper:
+class Helper:
     def plotTestData(self, testFile):
         testLines = self.readFileLines(testFile)
         deptDict = {}
@@ -607,12 +620,82 @@ class helper:
         plt.title(title)
         plt.show()
 
+    def countHoliday(self, lines):
+        allCount = len(lines);
+        print allCount
+        holidayCount = 0
+        for line in lines:
+            words = line.split(',')
+            if words[-1].strip() == 'TRUE':
+                holidayCount += 1
+
+        print float(holidayCount)/allCount
+
+    def dumpWalmartSalesCollToDisk(self):
+        trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+        trainCollFile = open('train-coll.obj', 'w') 
+        cPickle.dump(trainSalesColl, trainCollFile) 
+
+    def loadWalmartSalesCollFromDisk(self):
+        trainCollFile = open('train-coll.obj', 'r') 
+        trainSalesColl = pickle.load(trainCollFile)
+        print len(trainSalesColl.storeDocs[1].deptDocs[1].deptSalesLines)
+
+
+    def plotDeptSalesFigure(self, contextDeptDoc, realDeptDoc, forecastSalesRecords):
+        if len(realDeptDoc.salesColumn) != len(forecastSalesRecords):
+            print "Something wrong is happen, please check"
+            return
+
+        
+        numberRecords = len(contextDeptDoc.salesColumn) + len(realDeptDoc.salesColumn)
+        xScale = range(0, numberRecords)
+        xScaleForecast = range(len(contextDeptDoc.salesColumn), numberRecords)
+
+        realGraph = contextDeptDoc.salesColumn.tolist() + realDeptDoc.salesColumn.tolist()
+        print len(realGraph), len(forecastSalesRecords), 'test new'
+
+        plt.plot(xScale, realGraph)
+        plt.plot(xScaleForecast, forecastSalesRecords)
+
+        plt.show()
+
+
 if  __name__=='__main__':
 
-    #--------- START validation
-    validator = Validation('mock.train')
+    # #--------- START helper
+    # helper = Helper()
+    # helper.dumpWalmartSalesCollToDisk()
+    # #--------- START helper
+
+
+    #--------- START Plot Dept figure
+    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    validator = Validation('train.csv')
     validator.validate()
-    #--------- END validation
+    helper = Helper()
+    storeId = 1
+    deptId = 1
+    helper.plotDeptSalesFigure(validator.trainDataColl.storeDocs[storeId].deptDocs[deptId], validator.holdoutDataColl.storeDocs[storeId].deptDocs[deptId], validator.forecastResultsDict[str(storeId)+'_'+str(deptId)])
+    #--------- END Plot Dept figure
+
+
+
+    # #--------- START Holiday Dists
+    # validator = Validation('train.csv')
+    # # validator.validate()
+    # # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # helper = Helper()
+    # # helper.countHoliday(testSalesColl.lines)
+    # helper.countHoliday(validator.holdoutLines)
+    
+    # #--------- END Holiday Dists
+
+
+    # #--------- START validation
+    # validator = Validation('mock.train')
+    # validator.validate()
+    # #--------- END validation
 
 
     # #--------- Featured Multipe Linear Regression START
@@ -631,7 +714,7 @@ if  __name__=='__main__':
     # #--------- Featured Multipe Linear Regression END
 
 
-    # helper = helper()
+    # helper = Helper()
     # # helper.plotTestData2('test.csv')
     # helper.plotHoldoutData2()
 

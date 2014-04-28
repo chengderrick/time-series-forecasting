@@ -1,12 +1,29 @@
-1. The focus of final thesis should be on general time series forecasting discussion?
-2. Some paper roll out around the experiment they have done, focus on one problem and show results from various models
-but may my paper be a survey on the time series forecasting domain?
-3. Should I provide a comprehensive experiments on the results on the competition (have't implemented all the algorithms)?
+
+
+#Not a survey
+you need to start with Kaggle as a motivation
+Show all the methods used and their experiments results;
+~Dynamic Time Warping
+~Moving Average
+~Linear Regression
+~Linear Regression with features (Tempt etc)
+~Ensemble learning
+
+kaggle score, CV
+
+
 
 Algorithm questions:
 1. The shape of a MLR is a curve, then why we call it linear method?
 2. Papers don't describe algorithms into depth
 3. The distribution of holiday inbalance CV results. 
+4. Other ways to use feature.
+
+7.76% of test is holiday
+3.05% of holdout data is holiday
+
+We have a proportion about 7.5% of sample being a holiday week.
+Since in the errors made in holiday examples are inflated by a 5x factor, if you measure the WMAE in samples that have different proportion of holidays, such, for example, should be the case of public leaderboard set, you will get a different WMAE, due to this different proportion.
 
 
 Avg Tempture improved scored by 230. 03501 position by 8
@@ -164,3 +181,8 @@ In traditional forecasting of economic data, the analyzed series mainly represen
 For evaluation, usually a part at the end of each series is reserved and not used during model generation. This is often called out-of-sample evaluation [47]. To avoid confusion with other evaluation techniques, we will call validation using a set taken from the end of the series last block validation.
 
  Methods widely used are linear methods (made popular by Box and Jenkins [8]) such as autoregression (AR), moving average (MA), or combinations of these (ARMA) Based on these methods, various approaches exist to tackle non-stationarity in the series. A possibility is to use the derivative of the series as input (ARIMA). Or seasonal decomposition procedures, e.g., the STL procedure [16], are used to decompose the series into (deterministic) trend and seasonality, and a stochastic process of the residuals that is stationary.
+
+
+
+ Kaggle Abstract:
+ I read a lot about CV and understand that most people mean it as a means of checking training set against LB. I learnt and will use it for determining which model is better (defining models in some various ways) CV (as in regularisation). As the data for this competition is time-series this can be done in many ways (truncating, adding features etc...). Point is that this competition, as well as the ASUS and the Loan Default deals with future data points to predict. It is not possible in my mind to have pure CV in such cases, simply because the future changes and that data is not predictable as compared to the training set. In economy it is very obvious since market rates changes. And in the competitions as well the definition of the test set is different. At the same time it feels wrong to validate my model against the LB simply because what if I end up having to take care of the analysis of an important company with data that only I have? Then it is up to me to do the best prediction, with no LB to compare with. So I rather do CV or training set CV to get to some statistical good measure of the future rather than 'checking with the LB'. Someone out there understanding my point? (all in all i like the whole concept of Kaggle and the metric but in the end it is only at Kaggle I can compare results and in real life things are different, ok someone can look at my solutions using CV etc but then i have to look good hopefully...)
