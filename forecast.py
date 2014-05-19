@@ -10,6 +10,7 @@ import feature
 import pylab
 import matplotlib.pyplot as plt
 import cPickle
+import neurolab
 
 # Class for collection of dept sales docs, 
 # each store has many depts and each dept has a doc containing its weekly sales records
@@ -84,6 +85,11 @@ class WalmartSalesColl:
         f.close()
 
         return rawLines
+
+    def saveResultList(self, results, outputFile):
+        f = open(outputFile,'w+')
+        for item in results:
+            f.write("%s\n" % item)
 
     def outputForecastResult(self, results, outputFile):
         f = open(outputFile,'w+')
@@ -393,7 +399,7 @@ class DeptDoc:
         forecastResults = salesColumn[matchPoint + 1 : matchPoint + forecastSteps + 1]
         return forecastResults.tolist()
 
-    # ---------- This block is fore Simple Exponential Smoothing --------
+    # ---------- This block is for Simple Exponential Smoothing --------
     def calculateES(self, alpha, salesColumn, forecast0):
         esForecast = 0
         for i in range(1, len(salesColumn)+1):
@@ -416,6 +422,110 @@ class DeptDoc:
             esForecast = self.calculateES(alpha, salesColumn, numpy.mean(salesColumn))
             forecastResults.append(esForecast)
             salesColumn.append(esForecast)
+        return forecastResults
+
+    # ---------- This block is for ANN --------
+    def normArrayRange(self, arr, min, max):
+        newMin = -1.0
+        newMax = 1.0
+        oldRange = float((max - min))  
+        newRange = float((newMax - newMin))
+
+        normArr = (((arr - min) * newRange) / oldRange) + newMin
+
+        return numpy.round(normArr, decimals = 8)
+
+    def renormArrayRange(self, normArr, min, max):
+        oldMin = -1.0
+        oldMax = 1.0
+        oldRange = float((oldMax - oldMin))  
+        newRange = float((max - min))
+
+        renormArr = (((normArr - oldMin) * newRange) / oldRange) + min
+
+        return numpy.round(renormArr, decimals = 8)
+
+    def trainNeuralNetwork(self, trainData, targetData, minSale, maxSale, windowSize):
+        # print "trainData", trainData
+        # print "targetData", targetData
+        # print "minSale", minSale
+        # print "maxSale", maxSale
+        targetNorm = self.normArrayRange(targetData, minSale, maxSale)
+        # print "targetNorm", targetNorm
+
+        dataSize = len(targetNorm)
+        targetNorm = targetNorm.reshape(dataSize, 1)
+
+        # print "minSale", minSale, "maxSale", maxSale
+
+        inputSignature = numpy.array(([minSale, maxSale] * windowSize)).reshape(windowSize, 2).tolist()
+
+        # Create network with 2 inputs, 5 neurons in input layer and 1 in output layer
+        net = neurolab.net.newff(inputSignature, [5, 1])
+        err = net.train(trainData, targetNorm, epochs=500, show=100, goal=0.02)
+        
+        return net
+
+    def decideANNWindowSize(self, recordNumber):
+        if recordNumber/2 > 0:
+            return int(recordNumber/2)
+        # elif recordNumber/2 > 0:
+        #     return int(recordNumber/2)
+        else:
+            return 0
+
+    def forecastANN(self, trainSalesColl):
+        trainDeptDoc = self.fetchTrainDoc(trainSalesColl)
+        # pprint(trainDeptDoc.deptSalesInfo)
+        if trainDeptDoc == None:
+            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber
+
+        windowSize = self.decideANNWindowSize(trainDeptDoc.recordNumber)
+        # windowSize = 2
+        if windowSize == 0:
+            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber
+        # print "windowSize", windowSize
+
+        salesColumn = trainDeptDoc.salesColumn
+        minSale = numpy.amin(salesColumn) * 0.5
+        maxSale = numpy.amax(salesColumn) * 1.5
+        
+        # print "salesColumn", salesColumn
+
+        trainList = [] # all training data e.g. [ [], [] ]
+        targetList = [] # numberic targets e.g. [ ]
+        head = -1
+
+        # Generate training data from train
+        while abs(head) + windowSize <= trainDeptDoc.recordNumber:
+            tail = head - windowSize
+            trainInstance = salesColumn[tail: head]
+            trainList.append(trainInstance)
+            targetList.append(salesColumn[head])
+            head -= 1
+
+        # Construct initial model
+        trainList = numpy.array(trainList)
+        targetList = numpy.array(targetList)
+
+        network = self.trainNeuralNetwork(trainList, targetList, minSale, maxSale, windowSize)
+
+        # Make forecasting and add new instance into model
+        forecastResults =[]
+        for i in range (0, self.recordNumber):
+            newTrainInstance = salesColumn[-windowSize: ]
+            # print "newTrainInstance:", newTrainInstance
+            target = network.sim([newTrainInstance]).flatten()
+            realTarget = self.renormArrayRange(target, minSale, maxSale)[0]
+            forecastResults.append(realTarget)
+            salesColumn = numpy.append(salesColumn, realTarget)
+            # Feed new instance for the time being
+            # trainList = numpy.vstack((trainList, newTrainInstance))
+            # targetList = numpy.append(targetList, realTarget)
+            # network = self.trainNeuralNetwork(trainList, targetList, minSale, maxSale, windowSize)
+
+        print 'store', self.storeId, 'dept', self.deptId
+        print "forecastResults", forecastResults
         return forecastResults
 
 
@@ -455,13 +565,8 @@ class Validation:
             return recordNumber
 
     def validate(self):
-        # print "trainDataColl givenLines:"
-        # pprint(trainDataColl.givenLines)
-        # print "holdoutDataColl givenLines:"
-        # pprint(holdoutDataColl.givenLines)
-
         forecastResults = []
-        featureColl = feature.FeaturesColl('features.csv')
+        # featureColl = feature.FeaturesColl('features.csv')
 
         for testDeptDoc in self.holdoutDataColl.allDeptdocs:
             # print "test deptSalesLines:"
@@ -469,8 +574,9 @@ class Validation:
             if testDeptDoc.storeId == 1 and testDeptDoc.deptId == 1:
                 deptForecast = []
                 # deptForecast = testDeptDoc.forecastRegression(self.trainDataColl)
-                deptForecast = testDeptDoc.forecastFeaturedRegression(self.trainDataColl, featureColl)
+                # deptForecast = testDeptDoc.forecastFeaturedRegression(self.trainDataColl, featureColl)
                 # deptForecast = testDeptDoc.forecastDTW(self.trainDataColl)
+                deptForecast = testDeptDoc.forecastANN(self.trainDataColl)
                 forecastResults += deptForecast
                 self.forecastResultsDict[str(testDeptDoc.storeId) + '_' + str(testDeptDoc.deptId)] = deptForecast
 
@@ -663,21 +769,37 @@ class Helper:
 
 if  __name__=='__main__':
 
+    #--------- ANN START
+    # train collection
+    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # test collection
+    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+
+    forecastResults = []
+    for deptDoc in testSalesColl.allDeptdocs:
+        forecastResults += deptDoc.forecastANN(trainSalesColl)
+    
+    # pprint(forecastResults)
+    testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    #--------- ANN END
+
+
     # #--------- START helper
     # helper = Helper()
     # helper.dumpWalmartSalesCollToDisk()
     # #--------- START helper
 
 
-    #--------- START Plot Dept figure
-    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
-    validator = Validation('train.csv')
-    validator.validate()
-    helper = Helper()
-    storeId = 1
-    deptId = 1
-    helper.plotDeptSalesFigure(validator.trainDataColl.storeDocs[storeId].deptDocs[deptId], validator.holdoutDataColl.storeDocs[storeId].deptDocs[deptId], validator.forecastResultsDict[str(storeId)+'_'+str(deptId)])
-    #--------- END Plot Dept figure
+    # #--------- START Plot Dept figure
+    # # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # validator = Validation('train.csv')
+    # validator.validate()
+    # helper = Helper()
+    # storeId = 1
+    # deptId = 1
+    # helper.plotDeptSalesFigure(validator.trainDataColl.storeDocs[storeId].deptDocs[deptId], validator.holdoutDataColl.storeDocs[storeId].deptDocs[deptId], validator.forecastResultsDict[str(storeId)+'_'+str(deptId)])
+    # #--------- END Plot Dept figure
 
 
 
@@ -736,7 +858,7 @@ if  __name__=='__main__':
     #--------- Exponential Smoothing END
 
 
-    # #--------- Regression START
+    # #--------- Multiple Regression START
     # # train collection
     # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
     # # test collection
@@ -744,11 +866,11 @@ if  __name__=='__main__':
 
     # forecastResults = []
     # for deptDoc in testSalesColl.allDeptdocs:
-    #     forecastResults = deptDoc.forecastRegression(trainSalesColl)
+    #     forecastResults += deptDoc.forecastRegression(trainSalesColl)
     
     # # pprint(forecastResults)
     # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
-    # #--------- Regression END
+    # #--------- Multiple Regression END
 
 
     # #--------- ensemble Regression + DTW START

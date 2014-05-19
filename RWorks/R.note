@@ -1,0 +1,119 @@
+rwf_t = rwf(x, drift=TRUE, h = 20)
+mean_r = meanf(x, h=20)
+n = naive(x, h=20)
+sn = snaive(x, h=20)
+train <- read.csv("mock.train", header=TRUE)
+myts <- ts(myvector, start=c(2009, 1), end=c(2014, 12), frequency=12) 
+as.POSIXlt(x = "2010-02-05", origin="2010-02-05")$yday
+seq(as.Date("2010-02-05"), length.out=143, by="1 week")
+seq(as.Date("1990-01-01"), as.Date("1990-01-10"), by="1 day")
+fit <- auto.arima(traints) 
+traints <- ts(train$Weekly_Sales, start=c(2010-02-05), end=c(2012-10-26), frequency=52) 
+
+# dfSubmission = read.csv(file='./sampleSubmission.csv',header=TRUE,as.is=TRUE)
+dfSubmission$id <- c(testRow$dateId)
+  dfSubmission$Weekly_Sales <- c(predSales$Weekly_Sales)
+
+
+by(dfTest, 1:nrow(dfTest), function(testRow) {
+  
+  predSales = dfTrain[dfTrain$id == testRow$id & dfTrain$year == (testRow$year-1) & dfTrain$weeks == testRow$weeks,]
+  testRow
+  dfTest[dfTest$dateId == testRow$dateId,]$Weekly_Sales = predSales$Weekly_Sales
+  
+})
+
+Original Code
+=============================================
+#set options to make sure scientific notation is disabled when writing files
+WORKING_DIRECTORY = "~/Time Series/RWorks"
+options(stringsAsFactors = FALSE)
+setwd(WORKING_DIRECTORY)
+library(timeDate)
+options(scipen=500)
+#read in data
+# dfStore <- read.csv(file='./stores.csv')
+
+
+dfTrain <- read.csv(file='./train.csv')
+dfTrain$id = as.character(paste(dfTrain$Store, dfTrain$Dept, sep="_"))
+dfTrain$days = as.POSIXlt(x = dfTrain$Date)$yday
+dfTrain$weeks = as.integer(dfTrain$days/7+1)
+dfTrain$year = as.numeric(substr(dfTrain$Date,1,4))
+dfTrain$month = as.numeric(substr(dfTrain$Date,6,7))
+dfTrain$day = as.numeric(substr(dfTrain$Date,9,10))
+dfTrain$fakeId = as.character(paste(dfTrain$Store, dfTrain$Dept, (dfTrain$year), dfTrain$weeks, sep="_"))
+
+dfTest <- read.csv(file='./test.csv')
+dfTest$id = as.character(paste(dfTest$Store, dfTest$Dept, sep="_"))
+dfTest$dateId = as.character(paste(dfTest$Store, dfTest$Dept, dfTest$Date, sep="_"))
+dfTest$days = as.POSIXlt(x = dfTest$Date)$yday
+dfTest$weeks = as.integer(dfTest$days/7+1)
+dfTest$year = as.numeric(substr(dfTest$Date,1,4))
+dfTest$month = as.numeric(substr(dfTest$Date,6,7))
+dfTest$day = as.numeric(substr(dfTest$Date,9,10))
+dfTest$fakeId = as.character(paste(dfTest$Store, dfTest$Dept, (dfTest$year-1), dfTest$weeks, sep="_"))
+dfTest$Weekly_Sales <- 0
+
+
+for (i in 1:nrow(dfTest)){
+  print(i)
+  predSales = dfTrain[dfTrain$fakeId == dfTest[i,]$fakeId ,]
+  if(nrow(predSales)>0) {
+    dfTest[i,]$Weekly_Sales = predSales$Weekly_Sales
+  }
+  else {
+    dfTest[i,]$Weekly_Sales = 0
+  }
+}
+
+output <- data.frame(dfTest$dateId, dfTest$Weekly_Sales, stringsAsFactors=FALSE)
+write.table(output,
+            file='./outputFinal.csv',
+            sep=',', row.names=FALSE, quote=FALSE)
+
+# fuck end
+
+=====================================================
+
+Using Merge
+======================================================
+#set options to make sure scientific notation is disabled when writing files
+WORKING_DIRECTORY = "~/Time Series/RWorks"
+options(stringsAsFactors = FALSE)
+setwd(WORKING_DIRECTORY)
+library(timeDate)
+options(scipen=500)
+#read in data
+# dfStore <- read.csv(file='./stores.csv')
+
+
+dfTrain <- read.csv(file='./train.csv')
+dfTrain$id = as.character(paste(dfTrain$Store, dfTrain$Dept, sep="_"))
+dfTrain$days = as.POSIXlt(x = dfTrain$Date)$yday
+dfTrain$weeks = as.integer(dfTrain$days/7+1)
+dfTrain$year = as.numeric(substr(dfTrain$Date,1,4))
+dfTrain$month = as.numeric(substr(dfTrain$Date,6,7))
+dfTrain$day = as.numeric(substr(dfTrain$Date,9,10))
+dfTrain$fakeId = as.character(paste(dfTrain$Store, dfTrain$Dept, (dfTrain$year), dfTrain$weeks, sep="_"))
+
+dfTest <- read.csv(file='./test.csv')
+dfTest$id = as.character(paste(dfTest$Store, dfTest$Dept, sep="_"))
+dfTest$dateId = as.character(paste(dfTest$Store, dfTest$Dept, dfTest$Date, sep="_"))
+dfTest$days = as.POSIXlt(x = dfTest$Date)$yday
+dfTest$weeks = as.integer(dfTest$days/7+1)
+dfTest$year = as.numeric(substr(dfTest$Date,1,4))
+dfTest$month = as.numeric(substr(dfTest$Date,6,7))
+dfTest$day = as.numeric(substr(dfTest$Date,9,10))
+dfTest$fakeId = as.character(paste(dfTest$Store, dfTest$Dept, (dfTest$year-1), dfTest$weeks, sep="_"))
+dfTest$Weekly_Sales <- 0
+
+m <- merge(x=dfTrain, y=dfTest, by="fakeId", all.y=TRUE)
+m$Weekly_Sales.x[is.na(m$Weekly_Sales.x)] <- 0
+
+print("pass here")
+output <- data.frame(m$dateId, m$Weekly_Sales.x, stringsAsFactors=FALSE)
+write.table(output,
+            file='./outputFinal.csv',
+            sep=',', row.names=FALSE, quote=FALSE)
+# fuck end

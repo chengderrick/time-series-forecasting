@@ -1,0 +1,3 @@
+Store,Date,Temperature,Fuel_Price,CPI,Unemployment,IsHoliday
+1,2010-02-05,42.31,2.572,211.0963582,8.106,FALSE
+1,2010-02-12,38.51,2.548,211.2421698,8.106,TRUE
