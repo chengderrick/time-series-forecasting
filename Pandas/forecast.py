@@ -15,6 +15,15 @@ from datetime import datetime
 
 # Class for collection of dept sales docs, 
 # each store has many depts and each dept has a doc containing its weekly sales records
+"""Global variables"""
+TRAIN_SIZE = 143
+TEST_SIZE = 39
+
+TRAIN_START = '2010-02-05'
+TRAIN_END = '2012-10-26'
+TEST_START = '2012-11-02'
+TEST_END = '2013-07-26'
+
 class WalmartSalesColl:
     def __init__(self, fileName, fileType, crossValidate, givenLines):
         self.fileName = fileName
@@ -37,8 +46,9 @@ class WalmartSalesColl:
         df['Date'] = pd.to_datetime(df['Date'])
         if self.fileType == 'test': 
             df['_id'] = df['Store'].map(str)+'_' + df['Dept'].map(str) + '_' + df['Date_Str'].map(str)
-            df['Weekly_Sales'] = 0
-        return df
+            # df['Weekly_Sales'] = 0
+        indexed_df = df.set_index(['Date'])
+        return indexed_df
 
     def buildAllDeptSalesDocs(self):
         storeId = 1
@@ -233,8 +243,7 @@ class DeptDoc:
         # start = datetime(2010, 2, 5)
         # end = datetime(2012, 10, 26)
         # print df_train.ix[start:end]
-
-        print df_train['Date']['2010-2-5':'2012-10-26']
+        print df_train['2010-2-5':'2010-3-6']
 
         return 
         where_test_store = self.build_df_query(testSalesColl, 'Store', self.storeId)
@@ -254,6 +263,46 @@ class DeptDoc:
 
     #===========END========== Pandas ES ========================
 
+    #=============== Pandas DTW ================================
+    # ---------  This block is for Dynamic Time Warping  ---------
+    def decideDTWWindowSize(self, trainLength, forecastSteps):
+        # Note: train dept can be NONE here, need to fix the fetch part first
+        space = trainLength - forecastSteps
+        
+        if space/4 > 0:  # Normal situation
+            return space/4
+        else:  # There are more test than train or train data is not sufficient, fall back to linear regression
+            return -1
+
+    def forecastDTW(self, trainSalesColl):
+        trainDeptDoc = self.fetchTrainDoc(trainSalesColl)
+        print 'store', self.storeId, 'dept', self.deptId
+        #TODO: Temp:
+        if trainDeptDoc == None:
+            trainLength = 0
+        else:
+            trainLength = trainDeptDoc.recordNumber
+        # Temp END
+        
+        forecastSteps = self.recordNumber
+        #trainLength = trainDeptDoc.recordNumber  #TODO: Temp, should be uncommented when related dept found
+        windowSize = self.decideDTWWindowSize(trainLength, forecastSteps)
+        
+        # When windowSize is -1, use linear regression instead
+        if windowSize == -1:
+            return self.forecastRegression(trainSalesColl)
+
+        salesColumn = trainDeptDoc.salesColumn
+        match = mlpy.dtw_subsequence(salesColumn[-windowSize: ], salesColumn[ :-forecastSteps])
+        matchPoint = match[2][1][-1]
+        forecastResults = salesColumn[matchPoint + 1 : matchPoint + forecastSteps + 1]
+        return forecastResults.tolist()
+
+
+    #============END Pandas DTW ================================
+
+
+
 
     #=================Pandas Multipe Linear Regression ===========================
     def trainClassifier(self, trainData, targetData):
@@ -262,14 +311,13 @@ class DeptDoc:
         # classifier = svm.SVR()
         # classifier = tree.DecisionTreeRegressor()
         # classifier = GaussianNB()
+
         classifier.fit(trainData, targetData)
         return classifier
 
     def decideRegressionWindowSize(self, recordNumber):
         if recordNumber/5 > 0:
             return int(recordNumber/5)
-        # elif recordNumber/4 > 0:
-        #     return int(recordNumber/4)
         elif recordNumber/2 > 0:
             return int(recordNumber/2)
         else:
@@ -286,30 +334,28 @@ class DeptDoc:
         where_test_dept = self.build_df_query(testSalesColl, 'Dept', self.deptId)
         df_test = testSalesColl.gDataFrame[where_test_store & where_test_dept]
 
-        if dt_train.empty:
+        if df_train.empty:
             df_avg = df_test[['_id']]
-            # get the mean of all the same dept cross all stores
             df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_dept]['Weekly_Sales'].mean()
-
-
-        merged = pd.merge(df_dates_all, df_train, on='Date', how='left', suffixes=('_all', '_train'))
-        merged_ffill = merged.ffill()
-        # merged_test = pd.merge(df_test, merged_ffill, on='Date', how='left', suffixes=('_test', '_all'))
-
-
-
-        windowSize = self.decideRegressionWindowSize(trainDeptDoc.recordNumber)
-        if windowSize == 0:
-            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber
+            return df_avg
+        
+        merged = pd.merge(df_dates_all, df_train, left_index=True, right_index=True, how='left', \
+                                                                    suffixes=('_all', '_train'))
+        # Fill any missing data
+        merged[TRAIN_START:TRAIN_END] = merged[TRAIN_START:TRAIN_END].interpolate()
+        merged[TRAIN_START:TRAIN_END] = merged[TRAIN_START:TRAIN_END].fillna(method='bfill')
+    
+        windowSize = self.decideRegressionWindowSize(TRAIN_SIZE)
 
         dt = numpy.dtype(float)
-        salesColumn = numpy.array(trainDeptDoc.deptSalesInfo)[:,3].astype(dt) #TODO can be replaced with the self.salesColumn
+        salesColumn = numpy.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
+        
         trainList = [] # all training data e.g. [ [], [] ]
         targetList = [] # numberic targets e.g. [ ]
         head = -1
 
         # Generate training data from train
-        while abs(head) + windowSize <= trainDeptDoc.recordNumber:
+        while abs(head) + windowSize <= TRAIN_SIZE:
             tail = head - windowSize
             trainInstance = salesColumn[tail: head]
             trainList.append(trainInstance)
@@ -325,7 +371,7 @@ class DeptDoc:
 
         # Make forecasting and add new instance into model
         forecastResults =[]
-        for i in range (0, self.recordNumber):
+        for i in range (0, TEST_SIZE):
             newTrainInstance = salesColumn[-windowSize: ]
 
             target = classifier.predict(newTrainInstance)
@@ -335,10 +381,12 @@ class DeptDoc:
             trainList = numpy.vstack((trainList, newTrainInstance))
             targetList = numpy.append(targetList, target)
             classifier = self.trainClassifier(trainList, targetList)
+        
+        merged.loc[TEST_START:TEST_END, 'Weekly_Sales'] = forecastResults
 
-        print 'store', self.storeId, 'dept', self.deptId
-        #pprint(forecastResults)
-        return forecastResults
+        merged_test = pd.merge(df_test, merged, left_index=True, right_index=True, \
+                                                how='left', suffixes=('_test', '_all'))
+        return merged_test[['_id', 'Weekly_Sales']]
 
     #====================END========== andas Multipe Linear Regression ==================
 
@@ -501,6 +549,7 @@ class Helper:
 
         df_dates_all = pd.date_range(start, test_end, freq="W-FRI")
         df_dates_all = pd.DataFrame(pd.Series(df_dates_all), columns=['Date'])
+        df_dates_all = df_dates_all.set_index('Date')
         return df_dates_all
 
     def plotTestData(self, testFile):
@@ -656,25 +705,52 @@ class Helper:
 
 
 if  __name__=='__main__':
+    pd.set_option('display.mpl_style', 'default')
+    # pd.set_option('display.line_width', 5000) 
+    pd.set_option('display.height', 500)
+    pd.set_option('display.max_rows', 500)
+    pd.set_option('display.max_columns', 60) 
 
-
-    #--------- Pandas ES START
-    trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
-    testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+    #--------- Pandas MLR START
+    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
     helper = Helper()
+
     df_dates_all = helper.getFullDateRange()
     forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
     for deptDoc in testSalesColl.allDeptdocs:
-        df_result = deptDoc.pandasES(testSalesColl, trainSalesColl, df_dates_all)
+        df_result = deptDoc.pandasRegression(testSalesColl, trainSalesColl, df_dates_all)
         forecastResults = forecastResults.append(df_result)
-    print "OF cousre"
+    print "OF cousre, Done"
     # pprint(testSalesColl.gDataFrame)
-    # forecastResults.to_csv('es.csv', sep=',', index=False)
+    forecastResults.to_csv('linear_regression.csv', sep=',', index=False)
 
     # pprint(forecastResults)
     # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
     # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
-    #--------- Pandas ES END
+    #--------- Pandas MLR END
+    
+
+
+
+
+    # #--------- Pandas ES START
+    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+    # helper = Helper()
+    # df_dates_all = helper.getFullDateRange()
+    # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     df_result = deptDoc.pandasES(testSalesColl, trainSalesColl, df_dates_all)
+    #     forecastResults = forecastResults.append(df_result)
+    # print "OF cousre"
+    # # pprint(testSalesColl.gDataFrame)
+    # # forecastResults.to_csv('es.csv', sep=',', index=False)
+
+    # # pprint(forecastResults)
+    # # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    # #--------- Pandas ES END
 
 
     # #--------- Pandas MEAN START

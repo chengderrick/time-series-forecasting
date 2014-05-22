@@ -91,76 +91,7 @@
         #pprint(forecastResults)
         return forecastResults 
 
-    # ---------  This block is for Multipe Linear Regression  ---------
-    def trainClassifier(self, trainData, targetData):
-        classifier = linear_model.LinearRegression()
-        # classifier = linear_model.LassoLars(alpha=.1)
-        # classifier = svm.SVR()
-        # classifier = tree.DecisionTreeRegressor()
-        # classifier = GaussianNB()
-        classifier.fit(trainData, targetData)
-        return classifier
-
-    def decideRegressionWindowSize(self, recordNumber):
-        if recordNumber/5 > 0:
-            return int(recordNumber/5)
-        # elif recordNumber/4 > 0:
-        #     return int(recordNumber/4)
-        elif recordNumber/2 > 0:
-            return int(recordNumber/2)
-        else:
-            return 0
-
-    def forecastRegression(self, trainSalesColl):
-        if self.deptId in trainSalesColl.storeDocs[self.storeId].deptDocs:
-            trainDeptDoc = trainSalesColl.storeDocs[self.storeId].deptDocs[self.deptId]
-        else:
-            trainDeptDoc = None
-
-        if trainDeptDoc == None:
-            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber  # if test dept is not in training data
-        windowSize = self.decideRegressionWindowSize(trainDeptDoc.recordNumber)
-        if windowSize == 0:
-            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber
-
-        dt = numpy.dtype(float)
-        salesColumn = numpy.array(trainDeptDoc.deptSalesInfo)[:,3].astype(dt) #TODO can be replaced with the self.salesColumn
-        trainList = [] # all training data e.g. [ [], [] ]
-        targetList = [] # numberic targets e.g. [ ]
-        head = -1
-
-        # Generate training data from train
-        while abs(head) + windowSize <= trainDeptDoc.recordNumber:
-            tail = head - windowSize
-            trainInstance = salesColumn[tail: head]
-            trainList.append(trainInstance)
-            targetList.append(salesColumn[head])
-            head -= 1
-
-        # Construct initial model
-        trainList = numpy.array(trainList)
-        targetList = numpy.array(targetList)
-
-        classifier = self.trainClassifier(trainList, targetList)
-        #print('Coefficients: \n', classifier.coef_)
-
-        # Make forecasting and add new instance into model
-        forecastResults =[]
-        for i in range (0, self.recordNumber):
-            newTrainInstance = salesColumn[-windowSize: ]
-
-            target = classifier.predict(newTrainInstance)
-            forecastResults.append(target)
-            salesColumn = numpy.append(salesColumn, target)
-            # Feed new instance
-            trainList = numpy.vstack((trainList, newTrainInstance))
-            targetList = numpy.append(targetList, target)
-            classifier = self.trainClassifier(trainList, targetList)
-
-        print 'store', self.storeId, 'dept', self.deptId
-        #pprint(forecastResults)
-        return forecastResults
-
+  
     # ---------  This block is for Dynamic Time Warping  ---------
     def decideDTWWindowSize(self, trainLength, forecastSteps):
         # Note: train dept can be NONE here, need to fix the fetch part first
