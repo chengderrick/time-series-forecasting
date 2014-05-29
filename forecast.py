@@ -769,20 +769,20 @@ class Helper:
 
 if  __name__=='__main__':
 
-    #--------- ANN START
-    # train collection
-    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
-    # test collection
-    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # #--------- ANN START
+    # # train collection
+    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # # test collection
+    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
 
-    forecastResults = []
-    for deptDoc in testSalesColl.allDeptdocs:
-        forecastResults += deptDoc.forecastANN(trainSalesColl)
+    # forecastResults = []
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     forecastResults += deptDoc.forecastANN(trainSalesColl)
     
-    # pprint(forecastResults)
-    testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
-    testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
-    #--------- ANN END
+    # # pprint(forecastResults)
+    # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    # #--------- ANN END
 
 
     # #--------- START helper
@@ -858,19 +858,21 @@ if  __name__=='__main__':
     #--------- Exponential Smoothing END
 
 
-    # #--------- Multiple Regression START
-    # # train collection
-    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
-    # # test collection
-    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    #--------- Multiple Regression START
+    # train collection
+    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # test collection
+    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
 
-    # forecastResults = []
-    # for deptDoc in testSalesColl.allDeptdocs:
-    #     forecastResults += deptDoc.forecastRegression(trainSalesColl)
+    forecastResults = []
+    for deptDoc in testSalesColl.allDeptdocs:
+        forecastResults += deptDoc.forecastRegression(trainSalesColl)
+        print forecastResults
+        break
     
-    # # pprint(forecastResults)
+    # pprint(forecastResults)
     # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
-    # #--------- Multiple Regression END
+    #--------- Multiple Regression END
 
 
     # #--------- ensemble Regression + DTW START
