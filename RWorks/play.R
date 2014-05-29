@@ -1,5 +1,5 @@
 #set options to make sure scientific notation is disabled when writing files
-WORKING_DIRECTORY = "~/Time Series/RWorks"
+WORKING_DIRECTORY = "~/Time Series/Forecast/RWorks"
 options(stringsAsFactors = FALSE)
 setwd(WORKING_DIRECTORY)
 library(timeDate)

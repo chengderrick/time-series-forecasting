@@ -297,9 +297,9 @@ class DeptDoc:
 
     # ---------  This block is for Multipe Linear Regression  ---------
     def trainClassifier(self, trainData, targetData):
-        classifier = linear_model.LinearRegression()
+        # classifier = linear_model.LinearRegression()
         # classifier = linear_model.LassoLars(alpha=.1)
-        # classifier = svm.SVR()
+        classifier = svm.SVR()
         # classifier = tree.DecisionTreeRegressor()
         # classifier = GaussianNB()
         classifier.fit(trainData, targetData)
@@ -868,7 +868,7 @@ if  __name__=='__main__':
     for deptDoc in testSalesColl.allDeptdocs:
         forecastResults += deptDoc.forecastRegression(trainSalesColl)
         print forecastResults
-        break
+        
     
     # pprint(forecastResults)
     # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
