@@ -94,11 +94,11 @@ while (j < tmpR0) {
   testRows = nrow(testF1)
   if (tmpL<10) {#sample size restrictions since rf can fail if there isn't enough data
     #this model uses all dept data (since that store + dept pair does not exist in the training set)
-    tmpModel =  randomForest(logsales~Size+Type+ year + month + day + days + dayHoliday + tDays + days30+Temperature+Fuel_Price, 
+    tmpModel =  randomForest(logsales~Size+Type+ year + month + day + days + dayHoliday + tDays + days30 +Temperature+Fuel_Price, 
                                ntree=4800, replace=TRUE, mtry=4, data=dataF1)}
   else {
     #this model is trained on store+dept filtered data
-    tmpModel =  randomForest(logsales ~ year + month + day + days + dayHoliday + tDays + days30+Temperature+Fuel_Price,
+    tmpModel =  randomForest(logsales ~ year + month + day + days + dayHoliday + tDays + days30+Temperature+Fuel_Price, 
                                ntree=4800, replace=TRUE, mtry=3, data=dataF2)}
   tmpP = exp(predict(tmpModel,testF1))-4990
   k = j + testRows - 1
@@ -110,5 +110,5 @@ while (j < tmpR0) {
 
 #write the submission to csv for Kaggle submission
 write.table(x=submission,
-            file='./outputFinalRandomForest.csv',
+            file='./outputFinalRandomForestPlusTF.csv',
             sep=',', row.names=FALSE, quote=FALSE)
