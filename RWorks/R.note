@@ -117,3 +117,10 @@ write.table(output,
             file='./outputFinal.csv',
             sep=',', row.names=FALSE, quote=FALSE)
 # fuck end
+
+========================
+dfTrain <- read.csv(file='./mock.train')
+tsSales <- ts(dfTrain$Weekly_Sales, start=c(2010,2,5), frequency= 52)
+fit <- HoltWinters(tsSales)
+pred <- predict(fit, 35, prediction.interval = TRUE)
+plot(fit, pred)

@@ -1,17 +1,24 @@
 import sys
 from pprint import pprint
-import numpy
+import  numpy as np
 import scipy
 import math
 from sklearn import linear_model, svm, tree, neighbors
 from sklearn.naive_bayes import GaussianNB
-import mlpy
-import pylab
+from sklearn.ensemble import ExtraTreesRegressor, RandomForestRegressor
+from sklearn.feature_selection import SelectPercentile, f_regression, f_classif
+from sklearn import datasets
+import pandas.stats.moments as pdst
+# import mlpy
+import pylab as pl
 import matplotlib.pyplot as plt
-import cPickle
-import neurolab
+from matplotlib.pyplot import show
+# import cPickle
+# import neurolab
 import pandas as pd
 from datetime import datetime
+# import holtwinters as hw
+# from dateutil import parser
 
 # Class for collection of dept sales docs, 
 # each store has many depts and each dept has a doc containing its weekly sales records
@@ -27,6 +34,8 @@ TEST_END = '2013-07-26'
 class WalmartSalesColl:
     def __init__(self, fileName, fileType, crossValidate, givenLines):
         self.fileName = fileName
+        self.featureFileName = 'features.csv'
+        self.storeFileName = 'stores.csv'
         self.fileType = fileType
         self.crossValidate = crossValidate
         self.givenLines = givenLines
@@ -39,16 +48,68 @@ class WalmartSalesColl:
         # self.storeDocs = {}  # dict {1 : store object, 2: store object} and store doc contains dept objects
         # self.storeDocsList = [] # list has order
         # self.buildStoreSalesDocs()
+    def apply_format_id(self, df_row):
+        return '{}_{}_{}'.format(df_row['Store'], df_row['Dept'], df_row['Date_Str'])
+
+    def apply_day_holiday(self, df_row):
+        return df_row['IsHoliday'] * df_row['days']
+
+    def apply_week_holiday(self, df_row):
+        return df_row['IsHoliday'] * df_row['weeks']
 
     def fetchGlobalDf(self):
-        df = pd.read_csv(self.fileName)
+        df_data = pd.read_csv(self.fileName)
+        df_feature = pd.read_csv(self.featureFileName)
+        df_store = pd.read_csv(self.storeFileName)
+
+        df_temp = pd.merge(df_data, df_feature, how='left')
+        df = pd.merge(df_temp, df_store, how='left')
+        
         df['Date_Str'] = df['Date']
         df['Date'] = pd.to_datetime(df['Date'])
-        if self.fileType == 'test': 
-            df['_id'] = df['Store'].map(str)+'_' + df['Dept'].map(str) + '_' + df['Date_Str'].map(str)
-            # df['Weekly_Sales'] = 0
-        indexed_df = df.set_index(['Date'])
-        return indexed_df
+        df = df.set_index(['Date'])
+        
+        #Train
+        # df['_id'] = df.apply(self.apply_format_id, axis = 1)
+        df['_id'] = df['Store'].map(str)+'_' + df['Dept'].map(str) + '_' + df['Date_Str'].map(str)
+        df['year'] =  df.index.year
+        df['month'] =  df.index.month
+        df['day'] =  df.index.day
+        df['weeks'] = df.index.weekofyear
+        df['days'] = df.index.dayofyear
+        df['IsHoliday'] = df['IsHoliday'].astype(int)
+        # df['dayHoliday'] = df.apply(self.apply_day_holiday, axis = 1)
+        df['dayHoliday'] = df['IsHoliday'] * df['days']
+        df['weekHoliday'] = df['IsHoliday'] * df['weeks']
+
+        df = df.interpolate()
+        df = df.fillna(0)
+
+        df['year'] = (df['year'] - df['year'].min())/(df['year'].max()-df['year'].min())
+        df['month'] = (df['month'] - df['month'].min())/(df['month'].max()-df['month'].min())
+        df['day'] = (df['day'] - df['day'].min())/(df['day'].max()-df['day'].min())
+        df['weeks'] = (df['weeks'] - df['weeks'].min())/(df['weeks'].max()-df['weeks'].min())
+        df['days'] = (df['days'] - df['days'].min())/(df['days'].max()-df['days'].min())
+        df['dayHoliday'] = (df['dayHoliday'] - df['dayHoliday'].min())/(df['dayHoliday'].max()-df['dayHoliday'].min())
+        df['weekHoliday'] = (df['weekHoliday'] - df['weekHoliday'].min())/(df['weekHoliday'].max()-df['weekHoliday'].min())
+
+        df['Temperature'] = (df['Temperature'] - df['Temperature'].min())/(df['Temperature'].max()-df['Temperature'].min())
+        df['Fuel_Price'] = (df['Fuel_Price'] - df['Fuel_Price'].min())/(df['Fuel_Price'].max()-df['Fuel_Price'].min())
+        df['CPI'] = (df['CPI'] - df['CPI'].min())/(df['CPI'].max()-df['CPI'].min())
+        df['Unemployment'] = (df['Unemployment'] - df['Unemployment'].min())/(df['Unemployment'].max()-df['Unemployment'].min())
+        df['MarkDown1'] = (df['MarkDown1'] - df['MarkDown1'].min())/(df['MarkDown1'].max()-df['MarkDown1'].min())
+        df['MarkDown2'] = (df['MarkDown2'] - df['MarkDown2'].min())/(df['MarkDown2'].max()-df['MarkDown2'].min())
+        df['MarkDown3'] = (df['MarkDown3'] - df['MarkDown3'].min())/(df['MarkDown3'].max()-df['MarkDown3'].min())
+        df['MarkDown4'] = (df['MarkDown4'] - df['MarkDown4'].min())/(df['MarkDown4'].max()-df['MarkDown4'].min())
+        df['MarkDown5'] = (df['MarkDown5'] - df['MarkDown5'].min())/(df['MarkDown5'].max()-df['MarkDown5'].min())
+
+        if self.fileType == 'train':
+            # add 4990 removing negative
+            df['logSales'] = np.log(df['Weekly_Sales'] + 4990)
+ 
+        return df
+
+
 
     def buildAllDeptSalesDocs(self):
         storeId = 1
@@ -158,9 +219,9 @@ class StoreDoc:
 
     def getAvgSalesOfStore(self):
         if self.fileType == 'train':
-            dt = numpy.dtype(float)
-            salesColumn = numpy.array(self.storeSalesInfo)[:,3].astype(dt)
-            return numpy.mean(salesColumn)
+            dt = np.dtype(float)
+            salesColumn = np.array(self.storeSalesInfo)[:,3].astype(dt)
+            return np.mean(salesColumn)
             
         
 
@@ -208,14 +269,14 @@ class DeptDoc:
     def getSalesColumn(self):
         if self.fileType == 'test':
             return []
-        dt = numpy.dtype(float)
-        salesColumn = numpy.array(self.deptSalesInfo)[:,3].astype(dt)
+        dt = np.dtype(float)
+        salesColumn = np.array(self.deptSalesInfo)[:,3].astype(dt)
 
         return salesColumn
 
     def getAvgSalesOfDept(self):
         if self.fileType == 'train':
-            return numpy.mean(self.salesColumn)
+            return np.mean(self.salesColumn)
 
     def fetchTrainDoc(self, trainSalesColl):
         if self.deptId in trainSalesColl.storeDocs[self.storeId].deptDocs:
@@ -227,9 +288,6 @@ class DeptDoc:
 
     def build_df_query(self, coll, field, value):
         return coll.gDataFrame[field] == value
-
-
-
 
 
     #===================== Pandas ES ========================
@@ -286,6 +344,7 @@ class DeptDoc:
             df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_dept]['Weekly_Sales'].mean()
             return df_avg
 
+
         merged = pd.merge(df_dates_all, df_train, left_index=True, right_index=True, how='left', \
                                                                     suffixes=('_all', '_train'))
         # Fill any missing data
@@ -296,8 +355,8 @@ class DeptDoc:
         windowSize = self.decideDTWWindowSize(TRAIN_SIZE, forecastSteps)
         
 
-        dt = numpy.dtype(float)
-        salesColumn = numpy.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
+        dt = np.dtype(float)
+        salesColumn = np.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
         match = mlpy.dtw_subsequence(salesColumn[-windowSize: ], salesColumn[ :-forecastSteps])
         matchPoint = match[2][1][-1]
         forecastResults = salesColumn[matchPoint + 1 : matchPoint + forecastSteps + 1]
@@ -322,7 +381,7 @@ class DeptDoc:
 
         normArr = (((arr - min) * newRange) / oldRange) + newMin
 
-        return numpy.round(normArr, decimals = 8)
+        return np.round(normArr, decimals = 8)
 
     def renormArrayRange(self, normArr, min, max):
         oldMin = -1.0
@@ -332,7 +391,7 @@ class DeptDoc:
 
         renormArr = (((normArr - oldMin) * newRange) / oldRange) + min
 
-        return numpy.round(renormArr, decimals = 8)
+        return np.round(renormArr, decimals = 8)
 
     def trainNeuralNetwork(self, trainData, targetData, minSale, maxSale, windowSize):
         # print "trainData", trainData
@@ -347,7 +406,7 @@ class DeptDoc:
 
         # print "minSale", minSale, "maxSale", maxSale
 
-        inputSignature = numpy.array(([minSale, maxSale] * windowSize)).reshape(windowSize, 2).tolist()
+        inputSignature = np.array(([minSale, maxSale] * windowSize)).reshape(windowSize, 2).tolist()
 
         # Create network with 2 inputs, 5 neurons in input layer and 1 in output layer
         net = neurolab.net.newff(inputSignature, [5, 1])
@@ -395,11 +454,11 @@ class DeptDoc:
         train_size = len(merged[TRAIN_START:TRAIN_END].index)
         windowSize = self.decideANNWindowSize(train_size)
 
-        dt = numpy.dtype(float)
-        salesColumn = numpy.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
+        dt = np.dtype(float)
+        salesColumn = np.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
 
-        minSale = numpy.amin(salesColumn) * 0.5
-        maxSale = numpy.amax(salesColumn) * 1.5
+        minSale = np.amin(salesColumn) * 0.5
+        maxSale = np.amax(salesColumn) * 1.5
         
         trainList = [] # all training data e.g. [ [], [] ]
         targetList = [] # numberic targets e.g. [ ]
@@ -414,8 +473,8 @@ class DeptDoc:
             head -= 1
 
         # Construct initial model
-        trainList = numpy.array(trainList)
-        targetList = numpy.array(targetList)
+        trainList = np.array(trainList)
+        targetList = np.array(targetList)
 
         network = self.trainNeuralNetwork(trainList, targetList, minSale, maxSale, windowSize)
 
@@ -427,10 +486,10 @@ class DeptDoc:
             target = network.sim([newTrainInstance]).flatten()
             realTarget = self.renormArrayRange(target, minSale, maxSale)[0]
             forecastResults.append(realTarget)
-            salesColumn = numpy.append(salesColumn, realTarget)
+            salesColumn = np.append(salesColumn, realTarget)
             # Feed new instance for the time being
-            # trainList = numpy.vstack((trainList, newTrainInstance))
-            # targetList = numpy.append(targetList, realTarget)
+            # trainList = np.vstack((trainList, newTrainInstance))
+            # targetList = np.append(targetList, realTarget)
             # network = self.trainNeuralNetwork(trainList, targetList, minSale, maxSale, windowSize)
 
         merged.loc[TEST_START:TEST_END, 'Weekly_Sales'] = forecastResults
@@ -502,9 +561,9 @@ class DeptDoc:
             df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_dept]['Weekly_Sales'].mean()
             return df_avg
 
-        dt = numpy.dtype(float)
-        salesWithDate = numpy.array(merged[TRAIN_START:TRAIN_END][['Date_Str', 'Weekly_Sales']])
-        salesColumn = numpy.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
+        dt = np.dtype(float)
+        salesWithDate = np.array(merged[TRAIN_START:TRAIN_END][['Date_Str', 'Weekly_Sales']])
+        salesColumn = np.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
         train_size = len(merged[TRAIN_START:TRAIN_END].index)
 
         trainList = [] # all training data e.g. [ [], [] ]
@@ -520,8 +579,8 @@ class DeptDoc:
 
 
         # Construct initial model
-        trainList = numpy.array(trainList)
-        targetList = numpy.array(targetList)
+        trainList = np.array(trainList)
+        targetList = np.array(targetList)
 
         classifier = self.trainClassifier(trainList, targetList)
 
@@ -535,12 +594,12 @@ class DeptDoc:
             # print 'target', target
             # supply train as the classification goes
             forecastResults.append(target)
-            salesColumn = numpy.append(salesColumn, target)
-            salesWithDate = numpy.vstack((salesWithDate, [self.deptSalesInfo[i][2], target]))  # get date from test
+            salesColumn = np.append(salesColumn, target)
+            salesWithDate = np.vstack((salesWithDate, [self.deptSalesInfo[i][2], target]))  # get date from test
             
             # Feed new instance
-            trainList = numpy.vstack((trainList, newTrainInstance))
-            targetList = numpy.append(targetList, target)
+            trainList = np.vstack((trainList, newTrainInstance))
+            targetList = np.append(targetList, target)
             classifier = self.trainClassifier(trainList, targetList)
         print 'store', self.storeId, 'dept', self.deptId
         #pprint(forecastResults)
@@ -608,8 +667,8 @@ class DeptDoc:
         # windowSize = self.decideRegressionWindowSize(train_size)
         windowSize =1
 
-        dt = numpy.dtype(float)
-        salesColumn = numpy.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
+        dt = np.dtype(float)
+        salesColumn = np.array(merged[TRAIN_START:TRAIN_END]['Weekly_Sales']).astype(dt)
 
         trainList = [] # all training data e.g. [ [], [] ]
         targetList = [] # numberic targets e.g. [ ]
@@ -624,8 +683,8 @@ class DeptDoc:
             head -= 1
 
         # Construct initial model
-        trainList = numpy.array(trainList)
-        targetList = numpy.array(targetList)
+        trainList = np.array(trainList)
+        targetList = np.array(targetList)
 
         classifier = self.trainClassifier(trainList, targetList)
         
@@ -637,10 +696,10 @@ class DeptDoc:
             newTrainInstance = salesColumn[-windowSize: ]
             target = classifier.predict(newTrainInstance)
             forecastResults.append(target)
-            salesColumn = numpy.append(salesColumn, target)
+            salesColumn = np.append(salesColumn, target)
             # Feed new instance
-            trainList = numpy.vstack((trainList, newTrainInstance))
-            targetList = numpy.append(targetList, target)
+            trainList = np.vstack((trainList, newTrainInstance))
+            targetList = np.append(targetList, target)
             classifier = self.trainClassifier(trainList, targetList)
         forecastResults = [ round(elem, 4) for elem in forecastResults ]
         merged.loc[TEST_START:TEST_END, 'Weekly_Sales'] = forecastResults
@@ -651,6 +710,200 @@ class DeptDoc:
 
     #====================END========== andas Multipe Linear Regression ==================
 
+
+    #==========Start PHW ===== Holt Winters ===============================
+    def pandasHoltWinters(self, testSalesColl, trainSalesColl, df_dates_all):
+        print 'store', self.storeId, 'dept', self.deptId
+        
+        where_train_store = self.build_df_query(trainSalesColl, 'Store', self.storeId)
+        where_train_dept = self.build_df_query(trainSalesColl, 'Dept', self.deptId)
+        df_train = trainSalesColl.gDataFrame[where_train_store & where_train_dept]
+        
+        where_test_store = self.build_df_query(testSalesColl, 'Store', self.storeId)
+        where_test_dept = self.build_df_query(testSalesColl, 'Dept', self.deptId)
+        df_test = testSalesColl.gDataFrame[where_test_store & where_test_dept]
+
+        if df_train.empty:
+            df_avg = df_test[['_id']]
+            df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_dept]['Weekly_Sales'].mean()
+            return df_avg
+
+        merged = pd.merge(df_dates_all, df_train, left_index=True, right_index=True, how='left', \
+                                                                    suffixes=('_all', '_train'))
+        # Fill any missing data, will only do forward filling
+        merged[TRAIN_START:TEST_END] = merged[TRAIN_START:TEST_END].interpolate()
+        merged[TRAIN_START:TRAIN_END] = merged[TRAIN_START:TRAIN_END].fillna(method='bfill')
+
+        train_size = 117
+
+        hw_input = merged[TRAIN_START:TRAIN_END]['Weekly_Sales'][-train_size:]
+        forecastResults = hw.holtwinters(hw_input, 0.2, 0, 0.5, TEST_SIZE)
+        
+
+        merged.loc[TEST_START:TEST_END, 'Weekly_Sales'] = forecastResults
+        merged_test = pd.merge(df_test, merged, left_index=True, right_index=True, \
+                                                how='left', suffixes=('_test', '_all'))
+        # print forecastResults
+        return merged_test[['_id', 'Weekly_Sales']]
+    #==============END Holt Winters ========================================
+
+
+    #==========Start PHWCV ===== Holt Winters Cross Validation===============================
+    def pandasHoltWintersCV(self, testSalesColl, trainSalesColl, df_dates_all):
+        print 'store', self.storeId, 'dept', self.deptId
+        
+        where_train_store = self.build_df_query(trainSalesColl, 'Store', self.storeId)
+        where_train_dept = self.build_df_query(trainSalesColl, 'Dept', self.deptId)
+        df_train = trainSalesColl.gDataFrame[where_train_store & where_train_dept]
+        
+        where_test_store = self.build_df_query(testSalesColl, 'Store', self.storeId)
+        where_test_dept = self.build_df_query(testSalesColl, 'Dept', self.deptId)
+        df_test = testSalesColl.gDataFrame[where_test_store & where_test_dept]
+
+        CV_train_start = '2010-02-05'
+        CV_train_end = '2012-02-24'
+        CV_test_start = '2012-03-02'
+        CV_test_end = '2012-10-26'
+
+        if df_train.empty:
+            df_avg = df_test[['_id']]
+            df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_dept]['Weekly_Sales'].mean()
+            return df_avg
+
+        merged = pd.merge(df_dates_all, df_train, left_index=True, right_index=True, how='left', \
+                                                                    suffixes=('_all', '_train'))
+        # Fill any missing data, will only do forward filling
+        # merged[CV_train_start:CV_test_end] = merged[CV_train_start:CV_test_end].interpolate()
+        # merged[CV_train_start:CV_train_end] = merged[TRAIN_START:TRAIN_END].fillna(method='bfill')
+
+        train_size = 70
+
+        hw_input = merged[CV_train_start:CV_train_end]['Weekly_Sales'][-train_size:]
+        forecastResults = hw.holtwinters(hw_input, 0.00128438, 0.9491371, 1, 35)
+        
+
+        merged.loc[CV_test_start:CV_test_end, 'Weekly_Sales'] = forecastResults
+        merged_test = pd.merge(df_test, merged, left_index=True, right_index=True, \
+                                                how='left', suffixes=('_test', '_all'))
+        print forecastResults
+        return merged_test[['_id', 'Weekly_Sales']]
+    #==============END Holt Winters ========================================
+
+
+    #==========Start PSVR ===== Pandas SVR ==============================
+    def feature_selection_alt(self, X, y):
+        if len(y) == 0:
+            return
+
+        # Print the feature ranking
+        # print("Feature ranking:")
+        # for f in range(len(X_indices)):
+        #     print("feature", f + 1, indices[f], importances[indices[f]], FEATURES[indices[f]])
+        
+        # pl.figure()
+        # pl.title("Feature importances")
+        # pl.bar(range(len(X_indices)), importances[indices], color="r", yerr=std[indices], align="center")
+        # pl.xticks(range(len(X_indices)), indices)
+        # # pl.xlim([-1, len(X_indices)])
+        # pl.show(block=True)
+
+        # pl.figure(1)
+        # pl.clf()
+        X_indices = np.arange(X.shape[-1])
+        print "X_indices", X_indices
+        selector = SelectPercentile(f_regression, percentile=10)
+        selector.fit(X, y)
+        scores = -np.log10(selector.pvalues_)
+        print "scores", selector.pvalues_
+            
+        fig = plt.figure()
+        plt.title("Feature Importances", fontsize = 20)
+        plt.xlabel('Feature')
+        plt.legend(loc='upper right')
+        width = 0.8
+        plt.bar(X_indices, scores)
+        plt.xticks(X_indices + width / 2, FEATURES, rotation=90)
+        plt.savefig("figure.pdf")
+        plt.show(block=True)
+
+    def feature_selection(self, X, y):
+        # if len(y) == 0:
+        #     return
+        feature_names = np.array(FEATURES_NAME)
+        X_indices = np.arange(X.shape[-1])
+        # forest = ExtraTreesRegressor(n_estimators=1250, random_state=0)
+        forest = RandomForestRegressor(n_estimators=1250, max_features = 4, oob_score=True)
+        
+        forest.fit(X, y)
+        importances = forest.feature_importances_
+        std = np.std([tree.feature_importances_ for tree in forest.estimators_], axis=0)
+        indices = np.argsort(importances)[::-1]
+        
+        print indices[:10]
+        return indices[:10]
+        # fig = plt.figure()
+        # plt.title("Feature importances", fontsize = 16)
+        # plt.xlabel('Feature')
+        # plt.legend(loc='upper right')
+        # width = 0.8
+        # plt.bar(X_indices, importances[indices], color="blue", align="center")
+        # plt.xticks(X_indices, feature_names[indices], rotation=50)
+        # plt.tick_params(axis='both', which='major', labelsize=11)
+        # plt.show(block=True)
+
+ 
+
+    def pandasRegressor(self, testSalesColl, trainSalesColl, regressor):
+        print 'store', self.storeId, 'dept', self.deptId
+        features = np.array(FEATURES)
+
+        where_train_store = self.build_df_query(trainSalesColl, 'Store', self.storeId)
+        where_train_dept = self.build_df_query(trainSalesColl, 'Dept', self.deptId)
+        df_train = trainSalesColl.gDataFrame[where_train_store & where_train_dept]
+        
+        where_test_store = self.build_df_query(testSalesColl, 'Store', self.storeId)
+        where_test_dept = self.build_df_query(testSalesColl, 'Dept', self.deptId)
+        df_test = testSalesColl.gDataFrame[where_test_store & where_test_dept]
+
+        if df_train.empty or len(df_train.index)<10:
+            where_train_dept = self.build_df_query(trainSalesColl, 'Dept', self.deptId)
+            df_train = trainSalesColl.gDataFrame[where_train_dept]
+        
+        #Add rolling data
+        df_train['temp_ma'] = pdst.rolling_mean(df_train['Temperature'], 4)
+        df_train['fuel_ma'] = pdst.rolling_mean(df_train['Fuel_Price'], 4)
+        df_train['cpi_ma'] = pdst.rolling_mean(df_train['CPI'], 4)
+        df_train['unemploy_ma'] = pdst.rolling_mean(df_train['Unemployment'], 4)
+        df_train = df_train.fillna(method='bfill')        
+
+        # These for feature selection
+        train_list = np.array(df_train[features])
+        target_list = np.array(df_train[['logSales']]).flatten()
+
+        selected = self.feature_selection(train_list, target_list)
+        selected_features = features[selected]
+        
+        #Add rolling data
+        df_test['temp_ma'] = pdst.rolling_mean(df_test['Temperature'], 4)
+        df_test['fuel_ma'] = pdst.rolling_mean(df_test['Fuel_Price'], 4)
+        df_test['cpi_ma'] = pdst.rolling_mean(df_test['CPI'], 4)
+        df_test['unemploy_ma'] = pdst.rolling_mean(df_test['Unemployment'], 4)
+        df_test = df_test.fillna(method='bfill')
+
+        # Get selected features for traning
+        train_list = np.array(df_train[selected_features])
+        target_list = np.array(df_train[['logSales']]).flatten()
+
+        test_list = np.array(df_test[selected_features])
+        
+
+        regressor.fit(train_list, target_list)
+        reg_results = regressor.predict(test_list)
+        forecasts = np.exp(reg_results) - 4990
+        # print forecasts
+        return forecasts.tolist()
+        # df_result.to_csv('cv.seasonal_naive.csv', sep=',', index=False)
+    #==========END ===== Pandas SVR===============================
 
     #===================== Pandas Mean ========================
     def pandasMean(self, testSalesColl, trainSalesColl, df_dates_all):
@@ -677,8 +930,30 @@ class DeptDoc:
             df_avg['Weekly_Sales'] = df_train['Weekly_Sales'].mean()
             return df_avg
 
-    #===========END========== Pandas Mean ========================
+    def pandasMeanCV(self, testSalesColl, trainSalesColl, df_dates_all):
+        print 'store', self.storeId, 'dept', self.deptId
+        
+        where_train_store = self.build_df_query(trainSalesColl, 'Store', self.storeId)
+        where_train_dept = self.build_df_query(trainSalesColl, 'Dept', self.deptId)
+        df_train = trainSalesColl.gDataFrame[where_train_store & where_train_dept]
+        
+        where_test_store = self.build_df_query(testSalesColl, 'Store', self.storeId)
+        where_test_dept = self.build_df_query(testSalesColl, 'Dept', self.deptId)
+        df_test = testSalesColl.gDataFrame[where_test_store & where_test_dept]
 
+
+        if df_train.empty:
+            df_avg = df_test[['Date_Str']]
+            # get the mean of all the same dept cross all stores
+            df_avg['Weekly_Sales'] = trainSalesColl.gDataFrame[where_train_store]['Weekly_Sales'].mean()
+            return df_avg
+
+        else:
+            df_avg = df_test[['Date_Str']]
+            df_avg['Weekly_Sales'] = df_train['Weekly_Sales'].mean()
+            return df_avg
+
+    #===========END========== Pandas Mean ========================
 
     #==========END ===========Pandas Naive =======================
     def pandasNaive(self, trainSalesColl, df_dates_all):
@@ -749,7 +1024,7 @@ class Validation:
             return recordNumber/2
         else:
             return recordNumber
-
+    
     def validate(self):
         forecastResults = []
         # featureColl = feature.FeaturesColl('features.csv')
@@ -800,6 +1075,10 @@ class Validation:
         print 'test data size', len(forecast)
         return float(WMAESum)/weightSum
 
+    def pandasEvaluation(self, pred_file, actual_file):
+        dfPrediction = pd.read_csv(pred_file)
+        dfActual = pd.read_csv(actual_file)
+
 class Helper:
     def getFullDateRange(self):
         start = datetime(2010, 2, 5)
@@ -808,6 +1087,15 @@ class Helper:
         test_end = datetime(2013, 7, 26)
 
         df_dates_all = pd.date_range(start, test_end, freq="W-FRI")
+        df_dates_all = pd.DataFrame(pd.Series(df_dates_all), columns=['Date'])
+        df_dates_all = df_dates_all.set_index('Date')
+        return df_dates_all
+
+    def getCVDateRange(self):
+        start = datetime(2010, 2, 5)
+        train_end = datetime(2012, 10, 26)
+
+        df_dates_all = pd.date_range(start, train_end, freq="W-FRI")
         df_dates_all = pd.DataFrame(pd.Series(df_dates_all), columns=['Date'])
         df_dates_all = df_dates_all.set_index('Date')
         return df_dates_all
@@ -871,13 +1159,13 @@ class Helper:
         return lines
 
     def drawGraph(self, xData, yData, title):
-        pylab.title(title + ' dept data distribution')
-        pylab.xlabel('Dept')
-        pylab.ylabel('Number of records in the dept')
+        pl.title(title + ' dept data distribution')
+        pl.xlabel('Dept')
+        pl.ylabel('Number of records in the dept')
 
-        pylab.figure(1)
-        pylab.plot(xData, yData)
-        pylab.show() 
+        pl.figure(1)
+        pl.plot(xData, yData)
+        pl.show() 
 
     def plotTestData2(self, testFile):
         testLines = self.readFileLines(testFile)
@@ -963,14 +1251,121 @@ class Helper:
 
         plt.show()
 
+FEATURES = ['year', 'month', 'day', 'weeks', 'days', 'IsHoliday', 'dayHoliday', 'weekHoliday', \
+        'Temperature', 'Fuel_Price', 'CPI', 'Unemployment', 'MarkDown1', 'MarkDown2', 'MarkDown3', \
+         'MarkDown4', 'MarkDown5', 'temp_ma', 'fuel_ma', 'cpi_ma', 'unemploy_ma']
+
+FEATURES_NAME = ['Year', 'Month', 'Day', 'Weeks', 'Days', 'Is-HOL', 'Day-HOL', 'Week-HOL', \
+        'Temp', 'Fuel', 'CPI', 'Ump', 'MD1', 'MD2', 'MD3', 'MD4', 'MD5', 'Temp-MA', \
+                            'Fuel-MA', 'CPI-MA', 'Ump-MA']
 
 if  __name__=='__main__':
     pd.set_option('display.mpl_style', 'default')
     # pd.set_option('display.line_width', 5000) 
     pd.set_option('display.height', 500)
     pd.set_option('display.max_rows', 500)
-    pd.set_option('display.max_columns', 60) 
+    pd.set_option('display.max_columns', 60)
 
+    # --------- Pandas Regressor START
+    # train collection
+    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+
+    regressor = svm.SVR(kernel='rbf', C=100, gamma=0.0003)
+    # regressor = svm.SVR(kernel='linear', C=1e3)
+    # regressor = SVR(kernel='poly', C=1e3, degree=2)
+    # regressor = linear_model.LinearRegression()
+    # regressor = linear_model.Ridge (alpha = .5)
+    # regressor = linear_model.Lasso(alpha = 0.1)
+    # regressor = ExtraTreesRegressor(n_estimators=250, random_state=0)
+
+    forecastResults = []
+    for deptDoc in testSalesColl.allDeptdocs:
+        # deptDoc.pandasRegressor(testSalesColl, trainSalesColl, regressor)
+        forecastResults += deptDoc.pandasRegressor(testSalesColl, trainSalesColl, regressor)
+        # print forecastResults
+    # pprint(forecastResults)
+    testSalesColl.outputForecastResult(forecastResults, 'pandas_svr_rbf_select_features.csv')
+    # ---------Pandas Regressor END
+
+
+    # #--------- Pandas Holt Winters CV START
+    # trainSalesColl = WalmartSalesColl('cv.train', 'train', False, [])
+    # testSalesColl = WalmartSalesColl('cv.test', 'test', False, [])
+    # # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # helper = Helper()
+    # df_dates_all = helper.getCVDateRange()
+    # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     df_result = deptDoc.pandasHoltWintersCV(testSalesColl, trainSalesColl, df_dates_all)
+    #     forecastResults = forecastResults.append(df_result)
+    # print "Of course, Done"
+    # # pprint(testSalesColl.gDataFrame)
+    # forecastResults.to_csv('cv_holt_winters_s1_d3.csv', sep=',', index=False)
+
+    # pprint(forecastResults)
+    # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    #--------- Pandas Holt Winters CV END
+
+    # #--------- Pandas Holt Winters START
+    # # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # helper = Helper()
+
+    # df_dates_all = helper.getFullDateRange()
+    # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     df_result = deptDoc.pandasHoltWinters(testSalesColl, trainSalesColl, df_dates_all)
+    #     forecastResults = forecastResults.append(df_result)
+    # print "Of course, Done"
+    # # pprint(testSalesColl.gDataFrame)
+    # forecastResults.to_csv('pandas_holt_winters.csv', sep=',', index=False)
+
+    # # pprint(forecastResults)
+    # # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    # #--------- Pandas Holt Winters END
+
+
+
+    # #--------- Moving Average START
+    # # train collection
+    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # # test collection
+    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+
+    # forecastResults = []
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     forecastResults += deptDoc.forecastMovingAverage(trainSalesColl)
+    
+    # # pprint(forecastResults)
+    # # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
+    # #--------- Moving Average END
+
+
+    # #--------- CV Pandas MEAN START
+    # trainSalesColl = WalmartSalesColl('cv.train', 'train', False, [])
+    # testSalesColl = WalmartSalesColl('cv.test', 'train', False, [])
+    # helper = Helper()
+    # # df_dates_all = helper.getFullDateRange()
+    # df_dates_all = helper.getCVDateRange()
+    
+    # forecastResults = pd.DataFrame(None, columns=['Date_Str', 'Weekly_Sales'])
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     df_result = deptDoc.pandasMeanCV(testSalesColl, trainSalesColl, df_dates_all)
+    #     forecastResults = forecastResults.append(df_result)
+
+    # forecastResults.to_csv('mean_cv.csv', sep=',', index=False)
+    # # pprint(forecastResults)
+    # # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    # #--------- CV Pandas MEAN END
 
     # #--------- Pandas DTW START
     # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
@@ -988,22 +1383,22 @@ if  __name__=='__main__':
     # # forecastResults.to_csv('dtw.csv', sep=',', index=False)
     # #--------- Pandas DTW END
 
-    #--------- ANN START
-    # train collection
-    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
-    # test collection
-    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # #--------- ANN START
+    # # train collection
+    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # # test collection
+    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
 
-    helper = Helper()
-    df_dates_all = helper.getFullDateRange()
-    forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
-    for deptDoc in testSalesColl.allDeptdocs:
-        df_result = deptDoc.pandasANN(testSalesColl, trainSalesColl, df_dates_all)
-        forecastResults = forecastResults.append(df_result)
-    print "OF cousre, ANN Done"
-    # pprint(testSalesColl.gDataFrame)
-    forecastResults.to_csv('ann.csv', sep=',', index=False)
-    #--------- ANN END
+    # helper = Helper()
+    # df_dates_all = helper.getFullDateRange()
+    # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     df_result = deptDoc.pandasANN(testSalesColl, trainSalesColl, df_dates_all)
+    #     forecastResults = forecastResults.append(df_result)
+    # print "OF cousre, ANN Done"
+    # # pprint(testSalesColl.gDataFrame)
+    # forecastResults.to_csv('ann.csv', sep=',', index=False)
+    # #--------- ANN END
 
 
     # #--------- Pandas MLR START
@@ -1055,6 +1450,8 @@ if  __name__=='__main__':
     # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
     # helper = Helper()
     # df_dates_all = helper.getFullDateRange()
+    # # df_dates_all = helper.getCVDateRange()
+    
     # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
     # for deptDoc in testSalesColl.allDeptdocs:
     #     df_result = deptDoc.pandasMean(testSalesColl, trainSalesColl, df_dates_all)
@@ -1068,9 +1465,9 @@ if  __name__=='__main__':
 
     # #--------- Pandas NAIVE START
     # # train collection
-    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # trainSalesColl = WalmartSalesColl('cv.train', 'train', False, [])
     # # test collection
-    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+    # testSalesColl = WalmartSalesColl('cv.test', 'test', False, [])
     # helper = Helper()
     # df_dates_all = helper.getFullDateRange()
     # forecastResults = pd.DataFrame(None, columns=['_id', 'Weekly_Sales'])
@@ -1078,11 +1475,11 @@ if  __name__=='__main__':
     #     df_result = deptDoc.pandasNaive(trainSalesColl, df_dates_all)
     #     forecastResults = forecastResults.append(df_result)
 
-    # forecastResults.to_csv('mean.csv', sep=',', index=False)
-    # # pprint(forecastResults)
-    # # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
-    # # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
-    # #--------- Pandas NAIVE END
+    # # forecastResults.to_csv('mean.csv', sep=',', index=False)
+    # # # pprint(forecastResults)
+    # # # testSalesColl.saveResultList(forecastResults, 'ANNRescue.txt')
+    # # # testSalesColl.outputForecastResult(forecastResults, 'finalResultsANN.csv')
+    # # #--------- Pandas NAIVE END
 
 
     # #--------- START helper

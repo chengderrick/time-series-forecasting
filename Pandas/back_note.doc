@@ -30,9 +30,9 @@ merged = pd.merge(merged, df_test_all, on='Date', how='right', suffixes=('_all',
 
 
 
+,[0-9]{5}.[0-9]{1},
 
 
-
-
-
+Date_Str,Weekly_Sales
+Id,Weekly_Sales
 # dfTrain['Weekly_Sales'].plot()

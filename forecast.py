@@ -11,6 +11,8 @@ import pylab
 import matplotlib.pyplot as plt
 import cPickle
 import neurolab
+import pandas as pd
+from pandas.stats.moments import ewma
 
 # Class for collection of dept sales docs, 
 # each store has many depts and each dept has a doc containing its weekly sales records
@@ -187,6 +189,8 @@ class DeptDoc:
         if self.fileType == 'test':
             return []
         dt = numpy.dtype(float)
+        if self.recordNumber == 0:
+            return []
         salesColumn = numpy.array(self.deptSalesInfo)[:,3].astype(dt)
 
         return salesColumn
@@ -295,6 +299,24 @@ class DeptDoc:
         #pprint(forecastResults)
         return forecastResults 
 
+    # ---------BMA--------- This block for moving averaging ---------------
+    def forecastMovingAverage(self, trainSalesColl):
+        trainDeptDoc = self.fetchTrainDoc(trainSalesColl)
+        print 'store', self.storeId, 'dept', self.deptId
+        if trainDeptDoc == None:
+            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber 
+
+        salesColumn = trainDeptDoc.salesColumn
+        windowSize = 9
+
+        forecastResults =[]
+        for i in range (0, self.recordNumber):
+            forecast = numpy.mean(salesColumn[-windowSize:])
+            forecastResults.append(forecast)
+            salesColumn = numpy.append(salesColumn, forecast)
+        
+        return forecastResults
+
     # ---------  This block is for Multipe Linear Regression  ---------
     def trainClassifier(self, trainData, targetData):
         # classifier = linear_model.LinearRegression()
@@ -399,30 +421,35 @@ class DeptDoc:
         forecastResults = salesColumn[matchPoint + 1 : matchPoint + forecastSteps + 1]
         return forecastResults.tolist()
 
-    # ---------- This block is for Simple Exponential Smoothing --------
-    def calculateES(self, alpha, salesColumn, forecast0):
-        esForecast = 0
-        for i in range(1, len(salesColumn)+1):
-            esForecast += alpha * math.pow((1 - alpha), i-1) * salesColumn[-i]
+    # ------BES---- This block is for Simple Exponential Smoothing --------
+    # def calculateES(self, alpha, salesColumn, forecast0):
+    #     esForecast = 0
+    #     for i in range(1, len(salesColumn)+1):
+    #         esForecast += alpha * math.pow((1 - alpha), i-1) * salesColumn[-i]
 
-        esForecast += math.pow((1 - alpha), len(salesColumn)) * forecast0
-        return esForecast
+    #     esForecast += math.pow((1 - alpha), len(salesColumn)) * forecast0
+    #     return esForecast
+
+    def calculateES(self, x, span, periods):
+        x_predict = numpy.zeros((span+periods,))
+        x_predict[:span] = x[-span:]
+        pred =  ewma(x_predict, span)[span:]
+
+        return pred
 
     def forecastExponentialSmoothing(self, trainSalesColl):
+        print 'store', self.storeId, 'dept', self.deptId
         trainDeptDoc = self.fetchTrainDoc(trainSalesColl)
-        # TODO: need to handle when trainDeptDoc is None, fall back to Regression for the time being
         if trainDeptDoc == None:
-            return self.forecastRegression(trainSalesColl)
+            return [ trainSalesColl.storeDocs[self.storeId].avgStoreSales ] * self.recordNumber
 
-        forecastResults =[]
-        salesColumn = trainDeptDoc.salesColumn.tolist()
-
-        alpha = 0.2
-        for i in range(0, self.recordNumber):
-            esForecast = self.calculateES(alpha, salesColumn, numpy.mean(salesColumn))
-            forecastResults.append(esForecast)
-            salesColumn.append(esForecast)
-        return forecastResults
+        salesColumn = pd.Series(trainDeptDoc.salesColumn)
+        span = 80
+        if len(trainDeptDoc.salesColumn) < span:
+            return self.forecastMovingAverage(trainSalesColl)
+        
+        forecastResults = self.calculateES(salesColumn, span, self.recordNumber)
+        return forecastResults.tolist()
 
     # ---------- This block is for ANN --------
     def normArrayRange(self, arr, min, max):
@@ -569,25 +596,22 @@ class Validation:
         # featureColl = feature.FeaturesColl('features.csv')
 
         for testDeptDoc in self.holdoutDataColl.allDeptdocs:
-            # print "test deptSalesLines:"
-            # pprint(testDeptDoc.deptSalesLines)
-            if testDeptDoc.storeId == 1 and testDeptDoc.deptId == 1:
-                deptForecast = []
-                # deptForecast = testDeptDoc.forecastRegression(self.trainDataColl)
-                # deptForecast = testDeptDoc.forecastFeaturedRegression(self.trainDataColl, featureColl)
-                # deptForecast = testDeptDoc.forecastDTW(self.trainDataColl)
-                deptForecast = testDeptDoc.forecastANN(self.trainDataColl)
-                forecastResults += deptForecast
-                self.forecastResultsDict[str(testDeptDoc.storeId) + '_' + str(testDeptDoc.deptId)] = deptForecast
+            deptForecast = []
+            # deptForecast = testDeptDoc.forecastRegression(self.trainDataColl)
+            # deptForecast = testDeptDoc.forecastFeaturedRegression(self.trainDataColl, featureColl)
+            # deptForecast = testDeptDoc.forecastDTW(self.trainDataColl)
+            # deptForecast = testDeptDoc.forecastANN(self.trainDataColl)
+            deptForecast = [0] * testDeptDoc.recordNumber
+            forecastResults += deptForecast
+            # self.forecastResultsDict[str(testDeptDoc.storeId) + '_' + str(testDeptDoc.deptId)] = deptForecast
 
             # forecastResults += testDeptDoc.forecastDTW(trainDataColl)
-        # print "forecastResults:"
-        # pprint(forecastResults)
+
 
         # to unccomnet
-        # WMAE = self.evaluation(forecastResults, self.holdoutDataColl) # Evaluation the results against our metric
-        # print 'Final WMAE is', WMAE
-        # return WMAE
+        WMAE = self.evaluation(forecastResults, self.holdoutDataColl) # Evaluation the results against our metric
+        print 'Final WMAE is', WMAE
+        return WMAE
 
     # Method evaluation
     # forecast: [] 
@@ -814,10 +838,10 @@ if  __name__=='__main__':
     # #--------- END Holiday Dists
 
 
-    # #--------- START validation
-    # validator = Validation('mock.train')
-    # validator.validate()
-    # #--------- END validation
+    #--------- START validation
+    validator = Validation('train.csv')
+    validator.validate()
+    #--------- END validation
 
 
     # #--------- Featured Multipe Linear Regression START
@@ -843,36 +867,48 @@ if  __name__=='__main__':
 
 
 
-    #--------- Exponential Smoothing START
+    # # --------- Exponential Smoothing START
     # # train collection
-    # trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
+    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
     # # test collection
-    # testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
+    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
 
     # forecastResults = []
     # for deptDoc in testSalesColl.allDeptdocs:
     #     forecastResults += deptDoc.forecastExponentialSmoothing(trainSalesColl)
 
-    # pprint(len(forecastResults))
-    # testSalesColl.outputForecastResult(forecastResults, 'finalResultsFromDTW.csv')
-    #--------- Exponential Smoothing END
+    # testSalesColl.outputForecastResult(forecastResults, 'cv_ES_span_80.csv')
+    # # --------- Exponential Smoothing END
 
-
-    #--------- Multiple Regression START
-    # train collection
-    trainSalesColl = WalmartSalesColl('train.csv', 'train', False, [])
-    # test collection
-    testSalesColl = WalmartSalesColl('test.csv', 'test', False, [])
-
-    forecastResults = []
-    for deptDoc in testSalesColl.allDeptdocs:
-        forecastResults += deptDoc.forecastRegression(trainSalesColl)
-        print forecastResults
-        
     
-    # pprint(forecastResults)
-    # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
-    #--------- Multiple Regression END
+
+    # #--------- Moving Average START
+    # # train collection
+    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # # test collection
+    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+
+    # forecastResults = []
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     forecastResults += deptDoc.forecastMovingAverage(trainSalesColl)
+    # # pprint(forecastResults)
+    # testSalesColl.outputForecastResult(forecastResults, 'cv_prior_MV_win_9.csv')
+    # #--------- Moving Average END
+
+
+    # #--------- Multiple Regression START
+    # # train collection
+    # trainSalesColl = WalmartSalesColl('mock.train', 'train', False, [])
+    # # test collection
+    # testSalesColl = WalmartSalesColl('mock.test', 'test', False, [])
+
+    # forecastResults = []
+    # for deptDoc in testSalesColl.allDeptdocs:
+    #     forecastResults += deptDoc.forecastRegression(trainSalesColl)
+    #     # print forecastResults
+    # # pprint(forecastResults)
+    # # testSalesColl.outputForecastResult(forecastResults, 'finalResults.csv')
+    # #--------- Multiple Regression END
 
 
     # #--------- ensemble Regression + DTW START

@@ -9,7 +9,6 @@
 library(timeDate)
 library(randomForest)
 
-
 #set options to make sure scientific notation is disabled when writing files
 options(scipen=500)
 
@@ -53,6 +52,7 @@ train$logsales = train$Weekly_Sales
 #weight certain features more by duplication, not sure if helpful?
 train$tDays = 360*(train$year-2010) + (train$month-1)*30 + train$day
 train$days30 = (train$month-1)*30 + train$day
+train$weeks = as.integer(train$days/7+1)
 
 #Make features for test
 test$year = as.numeric(substr(test$Date,1,4))
@@ -72,7 +72,7 @@ test$IsHoliday[test$IsHoliday=="FALSE"]=0
 test$dayHoliday = test$IsHoliday*test$days
 test$tDays = 360*(test$year-2010) + (test$month-1)*30 + test$day
 test$days30 = (test$month-1)*30 + test$day
-
+test$weeks = as.integer(test$days/7+1)
 
 #Run model
 tmpR0 = nrow(submission)
@@ -95,11 +95,11 @@ while (j < tmpR0) {
   testRows = nrow(testF1)
   if (tmpL<10) {#sample size restrictions since rf can fail if there isn't enough data
     #this model uses all dept data (since that store + dept pair does not exist in the training set)
-    tmpModel =  randomForest(logsales~Size+Type+ year + month + day + days + dayHoliday + tDays + days30, 
+    tmpModel =  randomForest(logsales~Size+Type+ year + month + day + days + dayHoliday + weeks + IsHoliday, 
                                ntree=4800, replace=TRUE, mtry=4, data=dataF1)}
   else {
     #this model is trained on store+dept filtered data
-    tmpModel =  randomForest(logsales ~ year + month + day + days + dayHoliday + tDays + days30, 
+    tmpModel =  randomForest(logsales ~ year + month + day + days + dayHoliday + weeks + IsHoliday, 
                                ntree=4800, replace=TRUE, mtry=3, data=dataF2)}
   tmpP = exp(predict(tmpModel,testF1))-4990
   k = j + testRows - 1
